@@ -11,6 +11,10 @@ import os
 from datetime import datetime, timedelta
 import numpy as np
 import random
+from dateutil import parser
+import pytz
+
+
 
 def generate_sample_data(num_entities=5, entity_type="generic", 
                        timestamp_columns=None, output_file=None):
@@ -128,6 +132,7 @@ def detect_date_format(sample_date):
     """
     # Common date formats to try
     formats = [
+        '%Y-%m-%dT%H:%M:%S.%fZ',  # 2024-12-01T05:59:59.999Z (ISO format with Z)
         '%Y-%m-%d %H:%M:%S.%f',  # 2024-01-01 12:30:45.123
         '%Y-%m-%d %H:%M:%S',     # 2024-01-01 12:30:45
         '%Y-%m-%dT%H:%M:%S.%fZ', # 2024-01-01T12:30:45.123Z (ISO format)
@@ -150,7 +155,9 @@ def detect_date_format(sample_date):
     
     return None
 
-def parse_timestamps(df, column, errors='coerce'):
+
+
+def parse_timestamps(df, column, errors='coerce', normalize_tz=True):
     """
     Parse timestamp strings to datetime objects, handling multiple formats.
     
@@ -165,6 +172,9 @@ def parse_timestamps(df, column, errors='coerce'):
         - 'coerce': Set failed parse to NaT
         - 'raise': Raise exception
         - 'ignore': Return original values for failed parse
+    normalize_tz : bool, default=True
+        If True, converts all timestamps to timezone-naive by converting to UTC
+        and then removing the timezone information
         
     Returns:
     --------
@@ -176,33 +186,58 @@ def parse_timestamps(df, column, errors='coerce'):
     
     # Skip if already datetime
     if pd.api.types.is_datetime64_any_dtype(timestamp_series):
-        return timestamp_series
+        ts_series = timestamp_series
+    else:
+        # Try to parse with pandas first
+        try:
+            ts_series = pd.to_datetime(timestamp_series, errors=errors)
+        except:
+            # If pandas auto-detection fails, try dateutil parser
+            try:
+                def parse_with_dateutil(x):
+                    if pd.isna(x):
+                        return pd.NaT
+                    try:
+                        return parser.parse(str(x))
+                    except (ValueError, TypeError):
+                        if errors == 'raise':
+                            raise ValueError(f"Could not parse timestamp: {x}")
+                        elif errors == 'coerce':
+                            return pd.NaT
+                        else:  # 'ignore'
+                            return x
+                
+                parsed = timestamp_series.apply(parse_with_dateutil)
+                ts_series = pd.Series(pd.to_datetime(parsed, errors=errors))
+            except Exception as e:
+                if errors == 'raise':
+                    raise ValueError(f"Could not parse timestamps in column '{column}': {str(e)}")
+                elif errors == 'coerce':
+                    return pd.Series([pd.NaT] * len(timestamp_series))
+                else:  # 'ignore'
+                    return timestamp_series
     
-    # Try to parse with pandas
-    try:
-        return pd.to_datetime(timestamp_series, errors=errors)
-    except:
-        # If pandas auto-detection fails, try manual format detection
-        # Get the first non-null value
-        sample = timestamp_series.dropna().iloc[0] if not timestamp_series.dropna().empty else None
+    # Normalize timezone if requested
+    if normalize_tz and not ts_series.empty:
+        # Check if any timezone-aware timestamps exist
+        has_tz = any(not pd.isna(ts) and ts.tzinfo is not None for ts in ts_series)
         
-        if sample:
-            fmt = detect_date_format(str(sample))
-            if fmt:
-                # Apply the detected format
-                parsed = timestamp_series.apply(
-                    lambda x: datetime.strptime(str(x), fmt) if pd.notna(x) else pd.NaT
-                )
-                return parsed
+        if has_tz:
+            # Convert timezone-naive to UTC (assuming they're UTC)
+            def normalize_timestamp(ts):
+                if pd.isna(ts):
+                    return pd.NaT
+                    
+                # If timestamp has timezone, convert to UTC then make naive
+                if ts.tzinfo is not None:
+                    return ts.astimezone(pytz.UTC).replace(tzinfo=None)
+                    
+                # If timestamp is naive, assume it's UTC and leave as-is
+                return ts
+                
+            return ts_series.apply(normalize_timestamp)
     
-    # If all else fails, return as specified by errors parameter
-    if errors == 'coerce':
-        return pd.Series([pd.NaT] * len(timestamp_series))
-    elif errors == 'ignore':
-        return timestamp_series
-    else:  # 'raise'
-        raise ValueError(f"Could not parse timestamps in column '{column}'")
-
+    return ts_series            
 def create_color_scheme(base_color=None, accent_color=None):
     """
     Create a complete color scheme based on provided base and accent colors.

@@ -12,6 +12,7 @@ from datetime import datetime
 import pandas as pd
 import os
 import re
+from utils import parse_timestamps
 
 # Default color scheme - Best Buy brand colors
 DEFAULT_COLOR_SCHEME = {
@@ -239,8 +240,8 @@ def plot_timeline(data, timestamp_columns=None, entity_id=None,
     for col in timestamp_columns:
         if col in data.columns and pd.notna(data[col].iloc[0]):
             valid_columns.append(col)
-            # Parse the timestamp
-            ts = pd.to_datetime(data[col].iloc[0])
+            # Parse the timestamp, ensuring consistent timezone handling
+            ts = parse_timestamps(data, col, normalize_tz=True).iloc[0]
             timestamps.append(ts)
             
             # Get label for the column
@@ -252,7 +253,7 @@ def plot_timeline(data, timestamp_columns=None, entity_id=None,
                 label = clean_column_name(col, remove_suffixes)
             
             labels.append(label)
-    
+        
     if not timestamps:
         print(f"No valid timestamps found for entity {entity_id}")
         return None, None
