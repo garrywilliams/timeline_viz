@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "timeline_viz"
+version = "0.1.0"
+description = "A library for creating timeline visualizations from CSV data"
+readme = "README.md"
+authors = [
+    {name = "Garry Williams", email = "garry.williams@bestbuy.com"}
+]
+license = {text = "NA"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "numpy>=2.2.4",
+    "matplotlib>=3.4.0",
+    "pandas>=2.2.3",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/garrywilliams/timeline_viz"
+"Bug Tracker" = "https://github.com/garrywilliams/timeline_viz/issues"
+
+[project.scripts]
+timeline-viz = "cli:main"
+
+[tool.setuptools]
+py-modules = ["__init__", "timeline", "cli", "utils"]
