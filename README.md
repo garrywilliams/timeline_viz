@@ -1,6 +1,8 @@
-# Timeline Viz
+# Timeline Visualization
 
-A flexible library for creating timeline visualizations from timestamp data in CSV files.
+A Python library for creating timeline visualizations from CSV data.
+
+![Example Timeline](images/timeline1.png)
 
 ## Features
 
