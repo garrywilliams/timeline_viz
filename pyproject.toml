@@ -31,5 +31,35 @@ dependencies = [
 [project.scripts]
 timeline-viz = "cli:main"
 
+[project.optional-dependencies]
+test = [
+    "pytest>=8.3.5",
+    "pytest-cov>=6.0.0",
+]
+
 [tool.setuptools]
 py-modules = ["__init__", "timeline", "cli", "utils"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov --cov-report=term-missing"
+
+[tool.coverage.run]
+source = ["."]
+omit = [
+    "tests/*",
+    "*/__init__.py",
+    "setup.py",
+    ".venv/*"
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "pass",
+]
+fail_under = 90

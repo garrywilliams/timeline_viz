@@ -12,7 +12,7 @@ from datetime import datetime
 import pandas as pd
 import os
 import re
-from utils import parse_timestamps
+from utils import parse_timestamps, detect_timestamp_columns
 
 # Default color scheme - Best Buy brand colors
 DEFAULT_COLOR_SCHEME = {
@@ -56,52 +56,6 @@ def clean_column_name(column_name, remove_suffixes=None):
     
     # Title case the result
     return clean_name.title()
-
-def detect_timestamp_columns(df, patterns=None):
-    """
-    Detect timestamp columns in a DataFrame based on naming patterns.
-    
-    Parameters:
-    -----------
-    df : pandas.DataFrame
-        DataFrame to analyze
-    patterns : list of str, optional
-        Regex patterns to match for timestamp columns
-        Default is common timestamp naming patterns
-        
-    Returns:
-    --------
-    list
-        Column names that match timestamp patterns
-    """
-    if patterns is None:
-        patterns = [
-            r'.*_utc$',             # ends with _utc
-            r'.*_at$',              # ends with _at
-            r'.*_time$',            # ends with _time
-            r'.*_date$',            # ends with _date
-            r'.*timestamp.*',       # contains timestamp
-            r'.*datetime.*',        # contains datetime
-            r'date.*',              # starts with date
-            r'time.*',              # starts with time
-        ]
-    
-    timestamp_columns = []
-    
-    for col in df.columns:
-        # Check if the column name matches any pattern
-        if any(re.match(pattern, col, re.IGNORECASE) for pattern in patterns):
-            # Verify it contains timestamp data (try to parse first non-null value)
-            try:
-                first_valid = df[col].dropna().iloc[0] if not df[col].dropna().empty else None
-                if first_valid is not None:
-                    pd.to_datetime(first_valid)
-                    timestamp_columns.append(col)
-            except (ValueError, TypeError):
-                # Not a timestamp column
-                continue
-    
-    return timestamp_columns
 
 def find_clusters(dates_num, threshold_days=30):
     """
@@ -393,25 +347,27 @@ def plot_timeline(data, timestamp_columns=None, entity_id=None,
         print(f"Saved timeline to {output_file}")
     
     if show_plot:
-        plt.show()
+        # Only try to show if using an interactive backend
+        if plt.get_backend().lower() in ['tkagg', 'qt5agg', 'macosx', 'wx', 'gtk3agg']:
+            plt.show()
     else:
         plt.close(fig)
     
     return fig, axs
 
-def plot_multiple_timelines(csv_file, timestamp_columns=None, id_column=None, 
+def plot_multiple_timelines(data, timestamp_columns=None, id_column=None, 
                          detect_timestamps=False, output_dir=None, max_entities=None,
                          threshold_days=1, figsize=(15, 5), point_size=10,
                          color_scheme=None, show_plots=True, dpi=150,
                          label_mappings=None, remove_suffixes=None,
                          entity_name='Entity'):
     """
-    Plot timelines for multiple entities from a CSV file.
+    Plot timelines for multiple entities from a DataFrame or CSV file.
     
     Parameters:
     -----------
-    csv_file : str
-        Path to CSV file containing event data
+    data : str or pandas.DataFrame
+        Either a path to CSV file or a pandas DataFrame containing event data
     timestamp_columns : list, optional
         List of column names containing timestamps to include in timeline
     id_column : str, optional
@@ -446,8 +402,13 @@ def plot_multiple_timelines(csv_file, timestamp_columns=None, id_column=None,
     processed_entities : list
         List of entity IDs that were successfully processed
     """
-    # Read the CSV file
-    df = pd.read_csv(csv_file)
+    # Handle input data
+    if isinstance(data, str):
+        df = pd.read_csv(data)
+    elif isinstance(data, pd.DataFrame):
+        df = data
+    else:
+        raise ValueError(f"data must be a DataFrame or path to CSV, not {type(data)}")
     
     # Create output directory if it doesn't exist
     if output_dir and not os.path.exists(output_dir):
@@ -478,6 +439,10 @@ def plot_multiple_timelines(csv_file, timestamp_columns=None, id_column=None,
         entity_ids = entity_ids[:max_entities]
     
     processed_entities = []
+    
+    # Validate threshold_days
+    if threshold_days <= 0:
+        raise ValueError("threshold_days must be positive")
     
     # Plot for each entity
     for entity_id in entity_ids:

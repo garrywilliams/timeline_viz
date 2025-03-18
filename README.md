@@ -14,14 +14,98 @@ A flexible library for creating timeline visualizations from timestamp data in C
 
 ## Installation
 
-```bash
-# Install from PyPI
-pip install timeline-viz
+There are several ways to install Timeline Viz:
 
-# Or install from source
+```bash
+# Option 1: Install with uv (recommended for development)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv pip install timeline-viz
+
+# Option 2: Install with pipx (recommended for command-line tools)
+pipx install timeline-viz
+
+# Option 3: Build and install from source
 git clone https://github.com/yourusername/timeline_viz.git
 cd timeline_viz
-pip install -e .
+
+# Build the wheel with uv
+uv build
+
+# Install the built wheel with pipx
+pipx install dist/*.whl
+
+# Or for development installation:
+# Using uv:
+uv pip install -e .
+# Or using pipx:
+pipx install -e .
+```
+
+Note: We recommend using [uv](https://github.com/astral/uv) for faster, more reliable Python package management and building, or [pipx](https://pypa.github.io/pipx/) for isolated installation of Python applications. The package can also be installed with regular pip if preferred.
+
+## Development
+
+### Testing
+
+To run the tests, first install the development dependencies:
+
+```bash
+# Install the package in development mode with test dependencies
+uv pip install -e ".[test]"
+
+# Run tests with pytest
+pytest
+
+# Run tests with coverage
+pytest --cov=timeline_viz
+
+# Generate coverage report
+pytest --cov=timeline_viz --cov-report=html
+```
+
+The HTML coverage report will be available in the `htmlcov` directory.
+
+To ensure your code maintains high test coverage:
+
+```bash
+# Run tests with minimum coverage enforcement
+pytest --cov=timeline_viz --cov-fail-under=90
+```
+
+For this to work, you'll need to update your `pyproject.toml` with the test dependencies:
+
+```toml
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+```
+
+### Development Setup
+
+For development, we recommend setting up a pre-commit hook to run tests before committing:
+
+```bash
+# Install pre-commit
+uv pip install pre-commit
+
+# Install the pre-commit hooks
+pre-commit install
+```
+
+Create a `.pre-commit-config.yaml` file:
+
+```yaml
+repos:
+-   repo: local
+    hooks:
+    -   id: pytest
+        name: pytest
+        entry: pytest
+        language: system
+        types: [python]
+        pass_filenames: false
 ```
 
 ## Usage
@@ -119,7 +203,13 @@ color_scheme = {
 
 ## Requirements
 
+### Runtime Dependencies
 - Python 3.6+
 - NumPy
 - Pandas
 - Matplotlib
+
+### Development Dependencies
+- pytest
+- pytest-cov
+- pre-commit (optional, for git hooks)

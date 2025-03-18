@@ -9,10 +9,18 @@ import argparse
 import os
 import sys
 import json
+import pandas as pd
 from timeline import plot_multiple_timelines, DEFAULT_COLOR_SCHEME
+from utils import create_color_scheme
 
-def parse_args():
-    """Parse command line arguments."""
+def parse_args(args=None):
+    """Parse command line arguments.
+    
+    Parameters:
+    -----------
+    args : list, optional
+        Command line arguments. If None, uses sys.argv[1:]
+    """
     parser = argparse.ArgumentParser(
         description='Generate timeline visualizations from CSV data',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -123,11 +131,42 @@ Example usage:
         help='Resolution for saved images'
     )
     
-    return parser.parse_args()
+    # Parse the arguments
+    args = parser.parse_args(args)
+    
+    # Validate figure size format
+    try:
+        width, height = map(float, args.figsize.split(','))
+    except ValueError:
+        parser.error("Figure size must be in format 'width,height'")
+    
+    # Convert JSON strings to dicts
+    if args.colors:
+        try:
+            args.colors = json.loads(args.colors)
+        except json.JSONDecodeError:
+            parser.error("Invalid JSON format for --colors")
+            
+    if args.label_mappings:
+        try:
+            args.label_mappings = json.loads(args.label_mappings)
+        except json.JSONDecodeError:
+            parser.error("Invalid JSON format for --label-mappings")
+            
+    return args
 
-def main():
-    """Main entry point for the CLI tool."""
-    args = parse_args()
+def main(args=None):
+    """Main entry point for the CLI tool.
+    
+    Parameters:
+    -----------
+    args : list, optional
+        Command line arguments. If None, uses sys.argv[1:]
+    """
+    if args is None:
+        args = sys.argv[1:]
+    
+    args = parse_args(args)
     
     # Validate input file exists
     if not os.path.isfile(args.csv_file):
@@ -143,26 +182,37 @@ def main():
         print(f"Error parsing figure size: {e}", file=sys.stderr)
         return 1
     
-    # Parse color scheme
+    # Initialize color_scheme
     color_scheme = None
+    
+    # Validate color scheme if provided
     if args.colors:
+        required_keys = [
+            'line', 'point_edge', 'point_face', 'connector',
+            'label_bg', 'label_edge', 'slashes', 'title'
+        ]
+        missing_keys = [key for key in required_keys if key not in args.colors]
+        if missing_keys:
+            print(f"Error: Missing required color keys: {missing_keys}")
+            return 1
+        
+        # Validate each color value
         try:
-            color_scheme = json.loads(args.colors)
-            # Merge with defaults for any missing colors
-            full_scheme = DEFAULT_COLOR_SCHEME.copy()
-            full_scheme.update(color_scheme)
-            color_scheme = full_scheme
-        except json.JSONDecodeError as e:
-            print(f"Error parsing color scheme JSON: {e}", file=sys.stderr)
+            color_scheme = create_color_scheme(
+                base_color=args.colors.get('line'),
+                accent_color=args.colors.get('point_face')
+            )
+        except ValueError as e:
+            print(f"Error: Invalid color scheme: {e}")
             return 1
     
-    # Parse label mappings
-    label_mappings = None
+    # Validate label mappings if provided
     if args.label_mappings:
-        try:
-            label_mappings = json.loads(args.label_mappings)
-        except json.JSONDecodeError as e:
-            print(f"Error parsing label mappings JSON: {e}", file=sys.stderr)
+        # Read CSV to get column names
+        df = pd.read_csv(args.csv_file)
+        invalid_columns = [col for col in args.label_mappings if col not in df.columns]
+        if invalid_columns:
+            print(f"Error: Label mappings reference non-existent columns: {invalid_columns}")
             return 1
     
     # Check if either timestamp columns or detection are specified
@@ -175,7 +225,7 @@ def main():
     # Generate the timelines
     try:
         processed = plot_multiple_timelines(
-            csv_file=args.csv_file,
+            data=args.csv_file,
             timestamp_columns=args.timestamp_columns,
             id_column=args.id_column,
             detect_timestamps=args.detect_timestamps,
@@ -187,7 +237,7 @@ def main():
             color_scheme=color_scheme,
             show_plots=not args.no_show,
             dpi=args.dpi,
-            label_mappings=label_mappings,
+            label_mappings=args.label_mappings,
             remove_suffixes=args.remove_suffixes,
             entity_name=args.entity_name
         )

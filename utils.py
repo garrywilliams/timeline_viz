@@ -18,137 +18,62 @@ import pytz
 
 def generate_sample_data(num_entities=5, entity_type="generic", 
                        timestamp_columns=None, output_file=None):
-    """
-    Generate sample data for timeline visualization testing.
-    
-    Parameters:
-    -----------
-    num_entities : int, default=5
-        Number of entities to generate
-    entity_type : str, default="generic"
-        Type of entity to generate (generic, patient, order, etc.)
-    timestamp_columns : list, optional
-        List of timestamp column names to generate
-        If None, uses default columns for the entity type
-    output_file : str, optional
-        Path to save the generated CSV file
-        If None, returns the DataFrame without saving
-        
-    Returns:
-    --------
-    pandas.DataFrame
-        DataFrame containing the generated data
-    """
-    # Define default timestamp columns based on entity type
-    default_columns = {
-        "generic": ["created_at_utc", "updated_at_utc", "completed_at_utc"],
-        "patient": ["admission_start_utc", "kit_assigned_utc", "activated_utc", 
-                   "first_event_utc", "first_task_utc", "discharged_utc"],
-        "order": ["order_placed_utc", "payment_received_utc", "processing_started_utc", 
-                 "shipped_utc", "delivered_utc"],
-        "task": ["created_at_utc", "assigned_at_utc", "started_at_utc", 
-                "milestone_1_at_utc", "milestone_2_at_utc", "completed_at_utc"]
-    }
-    
-    # Use default columns if none specified
+    """Generate sample data for testing."""
     if timestamp_columns is None:
-        timestamp_columns = default_columns.get(
-            entity_type.lower(), default_columns["generic"]
-        )
-    
-    # Define ID column based on entity type
-    id_column = f"{entity_type.lower()}_id" if entity_type != "generic" else "entity_id"
-    
-    # Create data structure
-    data = []
-    
-    for i in range(1, num_entities + 1):
-        # Base date for this entity
-        base_date = datetime(2024, random.randint(1, 12), random.randint(1, 28), 
-                           random.randint(8, 17), random.randint(0, 59))
+        timestamp_columns = ['created_at_utc', 'updated_at_utc']
         
-        # Create an entity record
+    # Create DataFrame with specified columns
+    data = []
+    current_time = datetime.now()
+    
+    for i in range(num_entities):
         entity = {
-            id_column: f"{10000 + i}"
+            f'{entity_type}_id': f'{i+1:03d}'
         }
         
-        # Add sequential timestamps with random gaps
-        current_time = base_date
+        # Add timestamps
         for col in timestamp_columns:
-            # Randomly skip some timestamps (about 10% chance)
-            if random.random() < 0.1 and col != timestamp_columns[0]:
-                continue
-                
-            # Add random time gap (minutes to hours)
-            gap = timedelta(
-                minutes=random.randint(15, 120)
-            )
-            current_time += gap
+            entity[col] = current_time.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+            current_time += timedelta(minutes=random.randint(15, 120))
             
-            # Add milliseconds for precision
-            ms = random.randint(0, 999)
-            timestamp = current_time.replace(microsecond=ms*1000)
-            
-            # Add to entity record
-            entity[col] = timestamp.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-            
-        # For some entities, add a large gap to test timeline breaks
-        if i % 3 == 0 and len(timestamp_columns) > 3:
-            mid_idx = len(timestamp_columns) // 2
-            for j in range(mid_idx, len(timestamp_columns)):
-                if timestamp_columns[j] in entity:
-                    # Parse the timestamp
-                    ts = datetime.strptime(entity[timestamp_columns[j]], "%Y-%m-%d %H:%M:%S.%f")
-                    # Add days gap
-                    ts += timedelta(days=random.randint(2, 5))
-                    # Update the timestamp
-                    entity[timestamp_columns[j]] = ts.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-        
         data.append(entity)
     
-    # Create DataFrame
     df = pd.DataFrame(data)
     
-    # Save to CSV if output file specified
     if output_file:
         df.to_csv(output_file, index=False)
-        print(f"Generated sample data with {num_entities} entities saved to {output_file}")
-    
+        
     return df
 
-def detect_date_format(sample_date):
+def detect_date_format(date_string):
     """
-    Detect the date format from a sample date string.
+    Detect the format of a date string.
     
     Parameters:
     -----------
-    sample_date : str
-        Sample date string to analyze
+    date_string : str
+        String containing a date
         
     Returns:
     --------
     str or None
-        Detected date format string for datetime.strptime, or None if not detected
+        Format string if detected, None if not a valid date
     """
-    # Common date formats to try
-    formats = [
-        '%Y-%m-%dT%H:%M:%S.%fZ',  # 2024-12-01T05:59:59.999Z (ISO format with Z)
-        '%Y-%m-%d %H:%M:%S.%f',  # 2024-01-01 12:30:45.123
-        '%Y-%m-%d %H:%M:%S',     # 2024-01-01 12:30:45
-        '%Y-%m-%dT%H:%M:%S.%fZ', # 2024-01-01T12:30:45.123Z (ISO format)
-        '%Y-%m-%dT%H:%M:%SZ',    # 2024-01-01T12:30:45Z
-        '%Y-%m-%d',              # 2024-01-01
-        '%m/%d/%Y %H:%M:%S',     # 01/01/2024 12:30:45
-        '%m/%d/%Y',              # 01/01/2024
-        '%d-%b-%Y %H:%M:%S',     # 01-Jan-2024 12:30:45
-        '%d-%b-%Y',              # 01-Jan-2024
-        '%b %d, %Y %H:%M:%S',    # Jan 01, 2024 12:30:45
-        '%b %d, %Y',             # Jan 01, 2024
+    if not isinstance(date_string, str):
+        return None
+        
+    common_formats = [
+        '%Y-%m-%d',
+        '%Y-%m-%d %H:%M:%S',
+        '%Y-%m-%dT%H:%M:%SZ',
+        '%m/%d/%Y',
+        '%d/%m/%Y',
+        '%Y%m%d'
     ]
     
-    for fmt in formats:
+    for fmt in common_formats:
         try:
-            datetime.strptime(sample_date, fmt)
+            datetime.strptime(date_string, fmt)
             return fmt
         except ValueError:
             continue
@@ -157,111 +82,84 @@ def detect_date_format(sample_date):
 
 
 
-def parse_timestamps(df, column, errors='coerce', normalize_tz=True):
+def parse_timestamps(df, column, normalize_tz=False, errors='raise'):
     """
-    Parse timestamp strings to datetime objects, handling multiple formats.
+    Parse timestamp column in a DataFrame.
     
     Parameters:
     -----------
     df : pandas.DataFrame
         DataFrame containing the timestamp column
     column : str
-        Column name to parse
-    errors : str, default='coerce'
+        Name of column containing timestamps
+    normalize_tz : bool, default=False
+        If True, converts timezone-aware timestamps to timezone-naive
+    errors : str, default='raise'
         How to handle parsing errors:
-        - 'coerce': Set failed parse to NaT
-        - 'raise': Raise exception
-        - 'ignore': Return original values for failed parse
-    normalize_tz : bool, default=True
-        If True, converts all timestamps to timezone-naive by converting to UTC
-        and then removing the timezone information
+        - 'raise': raise exception
+        - 'coerce': set invalid values to NaT
+        - 'ignore': return original values
         
     Returns:
     --------
     pandas.Series
-        Series of datetime objects
+        Series with parsed timestamps
     """
-    # Make a copy of the column
-    timestamp_series = df[column].copy()
+    timestamp_series = df[column]
     
-    # Skip if already datetime
-    if pd.api.types.is_datetime64_any_dtype(timestamp_series):
-        ts_series = timestamp_series
-    else:
-        # Try to parse with pandas first
-        try:
-            ts_series = pd.to_datetime(timestamp_series, errors=errors)
-        except:
-            # If pandas auto-detection fails, try dateutil parser
-            try:
-                def parse_with_dateutil(x):
-                    if pd.isna(x):
-                        return pd.NaT
-                    try:
-                        return parser.parse(str(x))
-                    except (ValueError, TypeError):
-                        if errors == 'raise':
-                            raise ValueError(f"Could not parse timestamp: {x}")
-                        elif errors == 'coerce':
-                            return pd.NaT
-                        else:  # 'ignore'
-                            return x
-                
-                parsed = timestamp_series.apply(parse_with_dateutil)
-                ts_series = pd.Series(pd.to_datetime(parsed, errors=errors))
-            except Exception as e:
-                if errors == 'raise':
-                    raise ValueError(f"Could not parse timestamps in column '{column}': {str(e)}")
-                elif errors == 'coerce':
-                    return pd.Series([pd.NaT] * len(timestamp_series))
-                else:  # 'ignore'
-                    return timestamp_series
-    
-    # Normalize timezone if requested
-    if normalize_tz and not ts_series.empty:
-        # Check if any timezone-aware timestamps exist
-        has_tz = any(not pd.isna(ts) and ts.tzinfo is not None for ts in ts_series)
+    if errors == 'ignore':
+        return timestamp_series
         
-        if has_tz:
-            # Convert timezone-naive to UTC (assuming they're UTC)
-            def normalize_timestamp(ts):
-                if pd.isna(ts):
-                    return pd.NaT
-                    
-                # If timestamp has timezone, convert to UTC then make naive
-                if ts.tzinfo is not None:
-                    return ts.astimezone(pytz.UTC).replace(tzinfo=None)
-                    
-                # If timestamp is naive, assume it's UTC and leave as-is
-                return ts
-                
-            return ts_series.apply(normalize_timestamp)
+    # Try to parse timestamps
+    ts_series = pd.to_datetime(timestamp_series, errors=errors)
     
-    return ts_series            
+    # Handle timezone normalization
+    if normalize_tz and not ts_series.isna().all():
+        # Only check timezone if we have valid timestamps
+        if ts_series.dt.tz is not None:
+            ts_series = ts_series.dt.tz_localize(None)
+    
+    return ts_series
+
 def create_color_scheme(base_color=None, accent_color=None):
-    """
-    Create a complete color scheme based on provided base and accent colors.
+    """Create a color scheme for timeline visualization."""
+    # Convert color names to hex first
+    if base_color and not base_color.startswith('#'):
+        from matplotlib.colors import to_hex
+        try:
+            base_color = to_hex(base_color)
+        except ValueError:
+            raise ValueError(f"Invalid color name: {base_color}")
+
+    if accent_color and not accent_color.startswith('#'):
+        from matplotlib.colors import to_hex
+        try:
+            accent_color = to_hex(accent_color)
+        except ValueError:
+            raise ValueError(f"Invalid color name: {accent_color}")
+
+    # Then validate hex format
+    if base_color:
+        if not re.match(r'^#[0-9A-Fa-f]{6}$', base_color):
+            raise ValueError(f"Invalid hex color format: {base_color}")
     
-    Parameters:
-    -----------
-    base_color : str, optional
-        Hex color code for the primary color
-        If None, uses Best Buy blue (#0046be)
-    accent_color : str, optional
-        Hex color code for the accent color
-        If None, uses Best Buy yellow (#ffe000)
-        
-    Returns:
-    --------
-    dict
-        Complete color scheme dictionary
-    """
+    if accent_color:
+        if not re.match(r'^#[0-9A-Fa-f]{6}$', accent_color):
+            raise ValueError(f"Invalid hex color format: {accent_color}")
+    
     # Default Best Buy colors
     if base_color is None:
         base_color = '#0046be'  # Best Buy blue
+    elif not base_color.startswith('#'):
+        # Convert color names to hex
+        from matplotlib.colors import to_hex
+        base_color = to_hex(base_color)
     
     if accent_color is None:
         accent_color = '#ffe000'  # Best Buy yellow
+    elif not accent_color.startswith('#'):
+        from matplotlib.colors import to_hex
+        accent_color = to_hex(accent_color)
     
     # Create color scheme
     return {
@@ -274,3 +172,65 @@ def create_color_scheme(base_color=None, accent_color=None):
         'slashes': base_color,       # Timeline breaks
         'title': base_color          # Title
     }
+
+def detect_timestamp_columns(columns):
+    """Detect columns that might contain timestamp data based on naming patterns."""
+    timestamp_patterns = ['_utc', '_at', '_time', '_date', 'timestamp', 'datetime']
+    start_patterns = ['date', 'time']
+    
+    detected = []
+    for col in columns:
+        col_lower = col.lower()
+        # Check suffixes
+        if any(col_lower.endswith(pattern) for pattern in timestamp_patterns):
+            detected.append(col)
+        # Check contains
+        elif any(pattern in col_lower for pattern in ['timestamp', 'datetime']):
+            detected.append(col)
+        # Check prefixes
+        elif any(col_lower.startswith(pattern) for pattern in start_patterns):
+            detected.append(col)
+            
+        # Don't include columns with 'invalid' in the name
+        if 'invalid' in col_lower:
+            detected.remove(col) if col in detected else None
+    
+    return detected
+
+def validate_timestamps(timestamp_columns, df_columns):
+    """Validate that all specified timestamp columns exist in the dataframe."""
+    missing = [col for col in timestamp_columns if col not in df_columns]
+    if missing:
+        raise ValueError(f"Timestamp columns not found in data: {missing}")
+    return True
+
+def clean_column_name(column_name, remove_suffixes=None):
+    """
+    Convert column names to human-readable labels.
+    
+    Parameters:
+    -----------
+    column_name : str
+        Original column name
+    remove_suffixes : list of str, optional
+        Suffixes to remove from column names (e.g., ['_utc', '_at'])
+        
+    Returns:
+    --------
+    str
+        Clean, human-readable label
+    """
+    clean_name = column_name
+    
+    # Remove specified suffixes
+    if remove_suffixes:
+        for suffix in remove_suffixes:
+            if clean_name.endswith(suffix):
+                clean_name = clean_name[:-len(suffix)]
+                break
+    
+    # Replace underscores and hyphens with spaces
+    clean_name = clean_name.replace('_', ' ').replace('-', ' ')
+    
+    # Title case the result
+    return clean_name.title()
