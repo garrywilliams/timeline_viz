@@ -8,3 +8,10 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Coverage / build artifacts
+.coverage
+htmlcov/
+
+# OS
+.DS_Store

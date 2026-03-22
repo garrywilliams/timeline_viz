@@ -12,6 +12,7 @@ import json
 import pandas as pd
 from timeline import plot_multiple_timelines, DEFAULT_COLOR_SCHEME
 from utils import create_color_scheme
+from promtest import parse_promtest_file, plot_promtest
 
 def parse_args(args=None):
     """Parse command line arguments.
@@ -130,6 +131,12 @@ Example usage:
         default=150,
         help='Resolution for saved images'
     )
+
+    parser.add_argument(
+        '--promtest',
+        action='store_true',
+        help='Treat input as a promtool unit-test YAML file and visualise series/alerts'
+    )
     
     # Parse the arguments
     args = parser.parse_args(args)
@@ -170,8 +177,12 @@ def main(args=None):
     
     # Validate input file exists
     if not os.path.isfile(args.csv_file):
-        print(f"Error: CSV file '{args.csv_file}' not found", file=sys.stderr)
+        print(f"Error: File '{args.csv_file}' not found", file=sys.stderr)
         return 1
+
+    # --- Promtest mode ---
+    if args.promtest:
+        return _run_promtest(args)
     
     # Parse figure size
     try:
@@ -255,6 +266,40 @@ def main(args=None):
         import traceback
         traceback.print_exc()
         return 1
+
+def _run_promtest(args):
+    """Handle --promtest mode."""
+    try:
+        figsize = tuple(map(float, args.figsize.split(',')))
+    except ValueError:
+        figsize = None
+
+    try:
+        groups = parse_promtest_file(args.csv_file)
+    except Exception as e:
+        print(f"Error parsing promtest file: {e}", file=sys.stderr)
+        return 1
+
+    if not groups:
+        print("No test groups found in the file.", file=sys.stderr)
+        return 1
+
+    try:
+        results = plot_promtest(
+            groups,
+            figsize=figsize,
+            show_plot=not args.no_show,
+            output_file=os.path.join(args.output_dir, 'promtest.png') if args.output_dir else None,
+            dpi=args.dpi,
+        )
+        print(f"Successfully visualised {len(results)} test group(s).")
+        return 0
+    except Exception as e:
+        print(f"Error generating promtest visualisation: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        return 1
+
 
 if __name__ == '__main__':
     sys.exit(main())

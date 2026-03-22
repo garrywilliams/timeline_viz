@@ -1,6 +1,6 @@
 # Timeline Visualization
 
-A Python library for creating timeline visualizations from CSV data.
+A Python library for creating timeline visualizations from timestamp data — CSV files, DataFrames, or **Prometheus test files**.
 
 ![Example Timeline](images/timeline1.png)
 
@@ -10,120 +10,125 @@ A Python library for creating timeline visualizations from CSV data.
 - Handle time gaps with broken timeline display
 - Process multiple entities from CSV files
 - Auto-detect timestamp columns based on naming patterns
+- **Visualise Prometheus promtool unit-test files** — series values, eval checkpoints, and alert checks on a relative time axis
 - Customizable appearance with color schemes
 - Command-line interface for non-programmers
 - Python API for integration into notebooks and applications
 
 ## Installation
 
-There are several ways to install Timeline Viz:
-
 ```bash
-# Option 1: Install with uv (recommended for development)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-uv pip install timeline-viz
+# Using uv (recommended)
+uv pip install -e ".[test]"
 
-# Option 2: Install with pipx (recommended for command-line tools)
-pipx install timeline-viz
-
-# Option 3: Build and install from source
+# Or from source
 git clone https://github.com/yourusername/timeline_viz.git
 cd timeline_viz
-
-# Build the wheel with uv
-uv build
-
-# Install the built wheel with pipx
-pipx install dist/*.whl
-
-# Or for development installation:
-# Using uv:
 uv pip install -e .
-# Or using pipx:
-pipx install -e .
 ```
 
-Note: We recommend using [uv](https://github.com/astral/uv) for faster, more reliable Python package management and building, or [pipx](https://pypa.github.io/pipx/) for isolated installation of Python applications. The package can also be installed with regular pip if preferred.
+## Quick Start
 
-## Usage
-
-### Command-Line Interface
+### CSV / DataFrame Timelines
 
 ```bash
-# Generate timelines with automatic timestamp detection
-timeline-viz data.csv --output-dir timelines --detect-timestamps
+# CLI — auto-detect timestamp columns
+timeline-viz data.csv --detect-timestamps --output-dir timelines
 
-# Specify timestamp columns
+# CLI — specify columns explicitly
 timeline-viz data.csv --timestamp-columns created_at updated_at completed_at
-
-# Use a custom entity identifier column and name
-timeline-viz patients.csv --id-column patient_id --entity-name Patient
 ```
-
-### Python API
 
 ```python
 from timeline_viz import plot_timeline, plot_multiple_timelines
+
+# Single entity
 import pandas as pd
-
-# Plot a single timeline
 df = pd.read_csv("data.csv")
-plot_timeline(df.iloc[0], 
-             timestamp_columns=['created_at', 'updated_at', 'completed_at'],
-             entity_id="12345")
+plot_timeline(df.iloc[0],
+              timestamp_columns=['created_at', 'updated_at', 'completed_at'],
+              entity_id="12345")
 
-# Plot multiple timelines from a CSV file
+# Multiple entities
 plot_multiple_timelines("data.csv",
-                      timestamp_columns=['created_at', 'updated_at', 'completed_at'],
-                      id_column='entity_id',
-                      output_dir="timeline_images")
+                        timestamp_columns=['created_at', 'updated_at'],
+                        id_column='entity_id',
+                        output_dir="timeline_images")
 ```
 
-### Jupyter Notebook Example
+### Prometheus Test Timelines
+
+Visualise `promtool` unit-test YAML files — see series values change over time, where evaluations happen, and when alerts fire.
+
+```bash
+# CLI
+timeline-viz my_rules_test.yml --promtest
+timeline-viz my_rules_test.yml --promtest --output-dir images --no-show
+```
 
 ```python
-import pandas as pd
-from timeline_viz import plot_timeline, create_color_scheme
+from timeline_viz import parse_promtest_file, plot_promtest
 
-# Load data
-df = pd.read_csv("events.csv")
-
-# Create a custom color scheme (optional)
-colors = create_color_scheme(base_color="#336699", accent_color="#FFCC00")
-
-# Plot the timeline
-plot_timeline(df.iloc[0], 
-             timestamp_columns=['order_placed_utc', 'shipped_utc', 'delivered_utc'],
-             entity_id=df.iloc[0]['order_id'],
-             color_scheme=colors,
-             title=f"Order Timeline #{df.iloc[0]['order_id']}")
+groups = parse_promtest_file("my_rules_test.yml")
+plot_promtest(groups, output_file="promtest_timeline.png")
 ```
+
+![Promtest Example](images/promtest_example_1.png)
+
+Charts are self-documenting — each subplot shows the metric name and raw notation, value labels appear at transition points, eval/alert vertical lines are labelled, and a legend strip at the bottom explains all marker types.
+
+> **Full guide:** [PROMTEST.md](PROMTEST.md) — notation reference, worked examples, and all parameters.
 
 ## How It Works
 
-The library visualizes timestamps as points along a timeline. When time gaps exceed a threshold, the timeline is broken into segments with slash markers indicating the breaks. Events are labeled with both their name and timestamp, displayed in alternating positions above and below the timeline for better readability.
+### CSV Timelines
 
-### Key Parameters
+Timestamps are plotted as labeled points along a horizontal axis. When time gaps exceed a threshold, the timeline is broken into segments with slash markers indicating the breaks. Events are labeled with both their name and timestamp, displayed in alternating positions above and below the timeline.
 
-- `timestamp_columns`: Columns containing timestamp data to visualize
-- `id_column`: Column that uniquely identifies each entity
-- `threshold_days`: Time gap (in days) that triggers a timeline break
-- `entity_name`: Type of entity for display in titles (e.g., "Patient", "Order")
-- `label_mappings`: Custom display names for timestamp columns
+### Promtest Timelines
+
+Prometheus test files define metric series as values over discrete time steps (e.g. one value per minute). The library:
+
+1. Parses the YAML and **expands the compact notation** (`1+2x5` → `1, 3, 5, 7, 9, 11`)
+2. Plots each `input_series` as a **step chart** on its own subplot
+3. Draws **vertical markers** at `eval_time` checkpoints
+4. Shows **alert check points** with firing/pending status
+5. Labels the x-axis with **relative time offsets** (`0s`, `1m`, `2m`, …)
+
+## Key Parameters
+
+### CSV Mode
+
+| Parameter | Description |
+|-----------|-------------|
+| `timestamp_columns` | Columns containing timestamp data to visualise |
+| `id_column` | Column that uniquely identifies each entity |
+| `threshold_days` | Time gap (in days) that triggers a timeline break |
+| `entity_name` | Type name for titles (e.g. "Patient", "Order") |
+| `label_mappings` | Custom display names for timestamp columns |
+| `color_scheme` | Dictionary of colour overrides |
+
+### Promtest Mode
+
+| Parameter | Description |
+|-----------|-------------|
+| `figsize` | Figure dimensions `(width, height)` in inches |
+| `title` | Custom figure title |
+| `color_scheme` | Override colours (see [PROMTEST.md](PROMTEST.md#colour-scheme)) |
+| `output_file` | Save to PNG |
+| `dpi` | Resolution (default 150) |
 
 ## Advanced Features
 
 ### Automatic Timestamp Detection
 
-The library can automatically detect timestamp columns based on:
+The library auto-detects timestamp columns based on:
 
 - Column names ending with `_utc`, `_at`, `_time`, or `_date`
 - Column names containing `timestamp` or `datetime`
 - Column names starting with `date` or `time`
 
 ### Custom Color Schemes
-
-Define your own color scheme as a dictionary:
 
 ```python
 color_scheme = {
@@ -141,10 +146,11 @@ color_scheme = {
 ## Requirements
 
 ### Runtime Dependencies
-- Python 3.6+
+- Python 3.8+
 - NumPy
 - Pandas
 - Matplotlib
+- PyYAML
 
 ### Development Dependencies
 - pytest

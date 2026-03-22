@@ -40,9 +40,22 @@ from timeline import (
     format_timestamp
 )
 
+from promtest import (
+    parse_promtest_file,
+    parse_promtest_string,
+    plot_promtest,
+    expand_values,
+    parse_duration,
+)
+
 __all__ = [
     'plot_timeline',
     'plot_multiple_timelines',
     'find_clusters',
-    'format_timestamp'
+    'format_timestamp',
+    'parse_promtest_file',
+    'parse_promtest_string',
+    'plot_promtest',
+    'expand_values',
+    'parse_duration',
 ]

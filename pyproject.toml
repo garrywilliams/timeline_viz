@@ -22,6 +22,7 @@ dependencies = [
     "pandas>=2.2.3",
     "python-dateutil>=2.8.2",
     "pytz>=2025.1",
+    "pyyaml>=6.0",
 ]
 
 [project.urls]
@@ -38,7 +39,7 @@ test = [
 ]
 
 [tool.setuptools]
-py-modules = ["__init__", "timeline", "cli", "utils"]
+py-modules = ["__init__", "timeline", "cli", "utils", "promtest"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
