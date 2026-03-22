@@ -10,9 +10,9 @@ import os
 import sys
 import json
 import pandas as pd
-from timeline import plot_multiple_timelines, DEFAULT_COLOR_SCHEME
-from utils import create_color_scheme
-from promtest import parse_promtest_file, plot_promtest
+from timelineviz.timeline import plot_multiple_timelines, DEFAULT_COLOR_SCHEME
+from timelineviz.utils import create_color_scheme
+from timelineviz.promtest import parse_promtest_file, plot_promtest
 
 def parse_args(args=None):
     """Parse command line arguments.
@@ -28,22 +28,22 @@ def parse_args(args=None):
         epilog="""
 Example usage:
   # Generate timelines using auto-detected timestamp columns:
-  timeline-viz data.csv --output-dir timelines --detect-timestamps
+  timelineviz data.csv --output-dir timelines --detect-timestamps
   
   # Specify timestamp columns:
-  timeline-viz data.csv --timestamp-columns created_at updated_at completed_at
+  timelineviz data.csv --timestamp-columns created_at updated_at completed_at
   
   # Set entity identifier column and name:
-  timeline-viz patients.csv --id-column patient_id --entity-name Patient
+  timelineviz patients.csv --id-column patient_id --entity-name Patient
   
   # Use custom color scheme:
-  timeline-viz orders.csv --colors '{"line":"#336699","point_face":"#FFCC00"}'
+  timelineviz orders.csv --colors '{"line":"#336699","point_face":"#FFCC00"}'
   
   # Set custom label mappings:
-  timeline-viz events.csv --label-mappings '{"created_at":"Creation Date","completed_at":"Completion"}'
+  timelineviz events.csv --label-mappings '{"created_at":"Creation Date","completed_at":"Completion"}'
   
   # Process a specific number of entities:
-  timeline-viz large_data.csv --max-entities 5
+  timelineviz large_data.csv --max-entities 5
 """
     )
     

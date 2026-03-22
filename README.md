@@ -1,30 +1,37 @@
-# Timeline Visualization
+# timelineviz
 
-A Python library for creating timeline visualizations from timestamp data — CSV files, DataFrames, or **Prometheus test files**.
+[![PyPI version](https://img.shields.io/pypi/v/timelineviz)](https://pypi.org/project/timelineviz/)
+[![Python](https://img.shields.io/pypi/pyversions/timelineviz)](https://pypi.org/project/timelineviz/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+Timeline visualisation for CSV data and Prometheus test files.
 
 ![Example Timeline](images/timeline1.png)
 
 ## Features
 
-- Create clean, professional timeline visualizations from any timestamp data
+- Plot event timelines from CSV / DataFrame timestamp data
 - Handle time gaps with broken timeline display
-- Process multiple entities from CSV files
 - Auto-detect timestamp columns based on naming patterns
-- **Visualise Prometheus promtool unit-test files** — series values, eval checkpoints, and alert checks on a relative time axis
-- Customizable appearance with color schemes
-- Command-line interface for non-programmers
-- Python API for integration into notebooks and applications
+- **Visualise Prometheus `promtool` unit-test files** — series values, eval checkpoints, and alert checks on a relative time axis
+- Customisable colour schemes
+- CLI and Python API
 
 ## Installation
 
 ```bash
-# Using uv (recommended)
-uv pip install -e ".[test]"
+pip install timelineviz
 
-# Or from source
-git clone https://github.com/yourusername/timeline_viz.git
+# or with uv
+uv add timelineviz
+```
+
+For development:
+
+```bash
+git clone https://github.com/garrywilliams/timeline_viz.git
 cd timeline_viz
-uv pip install -e .
+uv pip install -e ".[dev]"
 ```
 
 ## Quick Start
@@ -32,19 +39,20 @@ uv pip install -e .
 ### CSV / DataFrame Timelines
 
 ```bash
-# CLI — auto-detect timestamp columns
-timeline-viz data.csv --detect-timestamps --output-dir timelines
+# Auto-detect timestamp columns
+timelineviz data.csv --detect-timestamps --output-dir timelines
 
-# CLI — specify columns explicitly
-timeline-viz data.csv --timestamp-columns created_at updated_at completed_at
+# Specify columns explicitly
+timelineviz data.csv --timestamp-columns created_at updated_at completed_at
 ```
 
 ```python
-from timeline_viz import plot_timeline, plot_multiple_timelines
+from timelineviz import plot_timeline, plot_multiple_timelines
 
-# Single entity
 import pandas as pd
 df = pd.read_csv("data.csv")
+
+# Single entity
 plot_timeline(df.iloc[0],
               timestamp_columns=['created_at', 'updated_at', 'completed_at'],
               entity_id="12345")
@@ -61,13 +69,12 @@ plot_multiple_timelines("data.csv",
 Visualise `promtool` unit-test YAML files — see series values change over time, where evaluations happen, and when alerts fire.
 
 ```bash
-# CLI
-timeline-viz my_rules_test.yml --promtest
-timeline-viz my_rules_test.yml --promtest --output-dir images --no-show
+timelineviz my_rules_test.yml --promtest
+timelineviz my_rules_test.yml --promtest --output-dir images --no-show
 ```
 
 ```python
-from timeline_viz import parse_promtest_file, plot_promtest
+from timelineviz import parse_promtest_file, plot_promtest
 
 groups = parse_promtest_file("my_rules_test.yml")
 plot_promtest(groups, output_file="promtest_timeline.png")
@@ -83,7 +90,7 @@ Charts are self-documenting — each subplot shows the metric name and raw notat
 
 ### CSV Timelines
 
-Timestamps are plotted as labeled points along a horizontal axis. When time gaps exceed a threshold, the timeline is broken into segments with slash markers indicating the breaks. Events are labeled with both their name and timestamp, displayed in alternating positions above and below the timeline.
+Timestamps are plotted as labelled points along a horizontal axis. When time gaps exceed a threshold, the timeline is broken into segments with slash markers indicating the breaks.
 
 ### Promtest Timelines
 
@@ -95,7 +102,7 @@ Prometheus test files define metric series as values over discrete time steps (e
 4. Shows **alert check points** with firing/pending status
 5. Labels the x-axis with **relative time offsets** (`0s`, `1m`, `2m`, …)
 
-## Key Parameters
+## API Reference
 
 ### CSV Mode
 
@@ -118,41 +125,6 @@ Prometheus test files define metric series as values over discrete time steps (e
 | `output_file` | Save to PNG |
 | `dpi` | Resolution (default 150) |
 
-## Advanced Features
+## License
 
-### Automatic Timestamp Detection
-
-The library auto-detects timestamp columns based on:
-
-- Column names ending with `_utc`, `_at`, `_time`, or `_date`
-- Column names containing `timestamp` or `datetime`
-- Column names starting with `date` or `time`
-
-### Custom Color Schemes
-
-```python
-color_scheme = {
-    'line': '#0046be',          # Timeline
-    'point_edge': '#0046be',    # Point border
-    'point_face': '#ffe000',    # Point fill
-    'connector': '#0046be',     # Connector lines
-    'label_bg': '#f5f5f5',      # Label background
-    'label_edge': '#0046be',    # Label border
-    'slashes': '#0046be',       # Timeline breaks
-    'title': '#0046be'          # Title
-}
-```
-
-## Requirements
-
-### Runtime Dependencies
-- Python 3.8+
-- NumPy
-- Pandas
-- Matplotlib
-- PyYAML
-
-### Development Dependencies
-- pytest
-- pytest-cov
-- pre-commit (optional, for git hooks)
+[MIT](LICENSE)

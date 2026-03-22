@@ -4,7 +4,7 @@ import pandas as pd
 from datetime import datetime
 import json
 import sys
-from cli import main, parse_args
+from timelineviz.cli import main, parse_args
 
 def test_parse_args_basic():
     # Test minimal arguments

@@ -18,19 +18,19 @@ A promtool test file defines metric series as values over discrete time steps an
 
 ```bash
 # Display interactively
-timeline-viz my_rules_test.yml --promtest
+timelineviz my_rules_test.yml --promtest
 
 # Save to file without displaying
-timeline-viz my_rules_test.yml --promtest --output-dir images --no-show
+timelineviz my_rules_test.yml --promtest --output-dir images --no-show
 
 # Custom size and resolution
-timeline-viz my_rules_test.yml --promtest --figsize 18,10 --dpi 300
+timelineviz my_rules_test.yml --promtest --figsize 18,10 --dpi 300
 ```
 
 ### Python API
 
 ```python
-from timeline_viz import parse_promtest_file, parse_promtest_string, plot_promtest
+from timelineviz import parse_promtest_file, parse_promtest_string, plot_promtest
 
 # From a file
 groups = parse_promtest_file("my_rules_test.yml")
@@ -58,7 +58,7 @@ plot_promtest(groups)
 ### Jupyter Notebook
 
 ```python
-from timeline_viz import parse_promtest_string, plot_promtest
+from timelineviz import parse_promtest_string, plot_promtest
 
 # plot_promtest returns a list of (figure, axes) tuples — one per test group
 results = plot_promtest(groups, show_plot=False)
@@ -151,7 +151,7 @@ tests:
 ```
 
 ```python
-from timeline_viz import parse_promtest_file, plot_promtest
+from timelineviz import parse_promtest_file, plot_promtest
 
 groups = parse_promtest_file("rules_test.yml")
 plot_promtest(groups, title="InstanceDown Alert Test")

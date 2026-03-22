@@ -5,14 +5,14 @@ import pandas as pd
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 import os
-from timeline import (
+from timelineviz.timeline import (
     plot_timeline,
     plot_multiple_timelines,
     find_clusters,
     format_timestamp,
     clean_column_name
 )
-from utils import create_color_scheme  # Local import
+from timelineviz.utils import create_color_scheme
 import pytz
 
 @pytest.fixture

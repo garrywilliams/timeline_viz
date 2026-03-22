@@ -4,7 +4,7 @@ matplotlib.use('Agg')
 import pytest
 from datetime import timedelta
 
-from promtest import (
+from timelineviz.promtest import (
     parse_duration,
     expand_values,
     parse_promtest_string,

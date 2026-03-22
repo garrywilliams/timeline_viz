@@ -12,6 +12,7 @@ wheels/
 # Coverage / build artifacts
 .coverage
 htmlcov/
+.pytest_cache/
 
 # OS
 .DS_Store

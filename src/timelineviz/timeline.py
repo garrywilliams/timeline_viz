@@ -12,7 +12,7 @@ from datetime import datetime
 import pandas as pd
 import os
 import re
-from utils import parse_timestamps, detect_timestamp_columns
+from timelineviz.utils import parse_timestamps, detect_timestamp_columns
 
 # Default color scheme - Best Buy brand colors
 DEFAULT_COLOR_SCHEME = {

@@ -1,17 +1,15 @@
 """Generate example promtest charts for documentation.
 
-Run from the timeline_viz directory:
+Run from the repo root:
+    python -m examples.gen_charts
+    # or
     python examples/gen_charts.py
 """
 import os
-import sys
-
-# Ensure we can import from the parent (timeline_viz) directory
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 import matplotlib
 matplotlib.use('Agg')
-from promtest import parse_promtest_string, plot_promtest
+from timelineviz.promtest import parse_promtest_string, plot_promtest
 
 OUT_DIR = os.path.join(os.path.dirname(__file__), '..', 'images')
 

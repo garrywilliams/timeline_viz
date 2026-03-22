@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 import pytz
 import os
-from utils import (
+from timelineviz.utils import (
     detect_timestamp_columns,
     validate_timestamps,
     create_color_scheme,
