@@ -41,6 +41,7 @@ from timelineviz.promtest import (
     parse_promtest_file,
     parse_promtest_string,
     plot_promtest,
+    find_gap_clusters,
     expand_values,
     parse_duration,
 )
@@ -55,6 +56,7 @@ __all__ = [
     "parse_promtest_file",
     "parse_promtest_string",
     "plot_promtest",
+    "find_gap_clusters",
     "expand_values",
     "parse_duration",
 ]

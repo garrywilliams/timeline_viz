@@ -138,6 +138,8 @@ Prometheus test files define metric series as values over discrete time steps (e
 4. Shows **alert check points** with firing/pending status
 5. Labels the x-axis with **relative time offsets** (`0s`, `1m`, `2m`, …)
 
+Optional **`break_gap_minutes`** / CLI **`--promtest-break-gap`**: when gaps between anchors (`0`, series end, each eval/alert time) exceed that many minutes, the chart splits into **multiple horizontal panels** with slash markers—same idea as CSV **`threshold_days`** breaks. See [PROMTEST.md](https://github.com/garrywilliams/timeline_viz/blob/main/PROMTEST.md) and [`examples/promtest_time_breaks.yml`](https://github.com/garrywilliams/timeline_viz/blob/main/examples/promtest_time_breaks.yml).
+
 ## From chart output to executive infographics
 
 `timelineviz` is built for **faithful, technical** timelines (PNG from the CLI or `output_file=` in Python). For **stakeholder decks**, **board summaries**, or **comms**, you can treat that output as **source material** for a second step: a **multimodal or image-focused LLM** (any tool that accepts an image plus a long text brief—e.g. **Nano Banana** or similar) together with:

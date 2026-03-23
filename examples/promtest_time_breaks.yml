@@ -1,0 +1,21 @@
+# Example: sparse eval times with a long idle gap in the middle.
+# Visualise with time breaks (same idea as CSV threshold_days):
+#
+#   timelineviz examples/promtest_time_breaks.yml --promtest --output-dir images --no-show \
+#     --promtest-break-gap 40
+#
+# Anchors are 0, 5m, 52m, 54m (end). Gap 5→52 exceeds 40m → two horizontal panels.
+
+evaluation_interval: 1m
+tests:
+  - name: sparse_eval_gap
+    interval: 1m
+    input_series:
+      - series: 'demo_metric'
+        # 50 minutes at 0, then 5 minutes at 1 → timeline 0..54m
+        values: '0+0x49 1+0x4'
+    promql_expr_test:
+      - expr: demo_metric > 0.5
+        eval_time: 5m
+      - expr: demo_metric > 0.5
+        eval_time: 52m
