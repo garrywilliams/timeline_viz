@@ -1,0 +1,63 @@
+# Dense alert_rule_test checkpoints with a long alert name (HighErrorRate) so main-axis
+# callouts are wide. Directional packing reuses lower rows when boxes do not overlap in x
+# (e.g. 4m and 5m can sit on the same track as 2m while 3m uses an upper track).
+#
+#   uv run python examples/gen_charts.py
+#   # writes images/promtest_callout_packing.png and ..._compact.png
+
+evaluation_interval: 1m
+tests:
+  - name: directional_callout_packing
+    interval: 1m
+    input_series:
+      - series: 'up{job="api"}'
+        values: '1+0x24'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: HighErrorRate
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: HighErrorRate
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+      - eval_time: 4m
+        alertname: HighErrorRate
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: HighErrorRate
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+      - eval_time: 8m
+        alertname: HighErrorRate
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: DiskPressure
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: DiskPressure
+        exp_alerts:
+          - exp_labels:
+              mount: data
+    promql_expr_test:
+      - expr: up == 1
+        eval_time: 1m
+        exp_samples:
+          - labels: 'up{job="api"}'
+            value: 1
+      - expr: up == 1
+        eval_time: 6m
+        exp_samples:
+          - labels: 'up{job="api"}'
+            value: 1
+      - expr: up == 1
+        eval_time: 9m
+        exp_samples:
+          - labels: 'up{job="api"}'
+            value: 1
+      - expr: up == 1
+        eval_time: 15m
+        exp_samples:
+          - labels: 'up{job="api"}'
+            value: 1

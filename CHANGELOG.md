@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.3.1] - 2026-03-25
+
+### Added
+
+- **Examples:** `examples/promtest_callout_packing.yml` plus `images/promtest_callout_packing.png` and `promtest_callout_packing_compact.png` (directional callout packing demos); `examples/promtest_alert_panel_demo.yml` and `images/promtest_alert_panel_demo.png` for dense Alert Checks rows.
+
+### Changed
+
+- **Promtest callout packing:** interval packing uses **directional** x-extents (left- vs right-anchored rows) so well-separated eval/alert callouts reuse lower tracks instead of over-stacking.
+- **Promtest Alert Checks panel:** extra y-axis headroom from stacked label depth so labels stay inside the axes; annotations use `clip_on=True` where appropriate.
+- **Promtest top series key:** first-series subtitle (metric + `values:` string) moves **below** the top subplot when callouts or a lower panel would obscure it; slightly increased multi-row vertical spacing.
+
+### Documentation
+
+- **PROMTEST.md** and **`examples/gen_charts.py`:** cover new fixtures and generated figures.
+
 ## [0.3.0] - 2026-03-24
 
 ### Added

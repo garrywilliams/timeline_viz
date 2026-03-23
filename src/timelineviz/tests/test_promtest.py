@@ -19,6 +19,7 @@ from timelineviz.promtest import (
     _promtest_label_layout_validate,
     _pack_eval_callout_rows,
     _max_packed_eval_callout_rows,
+    _alert_panel_annotation_layout,
     _eval_callout_reserve_inches,
     _parse_metric_selector,
     _td_to_minutes,
@@ -289,6 +290,28 @@ class TestHelpers:
         assert n_rows == 3
         assert len(set(rows)) == 3
 
+    def test_pack_eval_callout_rows_left_anchor_reuses_row(self):
+        """Symmetric packing would stack 2m/3m/4m; left-anchored extents let 4m share row 0 with 2m."""
+        gap = 0.1
+        centers = [2.0, 3.0, 4.0]
+        half_w = [0.95, 0.95, 0.95]
+        rows, n_rows = _pack_eval_callout_rows(centers, half_w, gap)
+        assert n_rows == 2
+        assert rows[0] == 0
+        assert rows[1] != rows[0]
+        assert rows[2] == 0
+
+    def test_alert_panel_annotation_layout(self):
+        centers = [2.0, 3.0, 15.0]
+        texts = ['AlertX @ 2m — FIRING', 'AlertX @ 3m — no alerts', 'AlertX @ 15m — FIRING']
+        dys, has, n_tiers = _alert_panel_annotation_layout(
+            centers, texts, 7.0, 0.0, 25.0, 12.0, 1.0, label_layout='readable',
+        )
+        assert len(dys) == 3
+        assert len(has) == 3
+        assert n_tiers >= 1
+        assert max(dys) >= 15.0
+
     def test_max_packed_eval_callout_rows_multi_fixture(self):
         groups = parse_promtest_file(
             str(Path(__file__).resolve().parents[3] / 'examples' / 'promtest_label_multi.yml'),
@@ -386,6 +409,36 @@ tests:
 """
         groups = parse_promtest_string(yaml_str)
         results = plot_promtest(groups, show_plot=False)
+        assert len(results) == 1
+        import matplotlib.pyplot as plt
+        plt.close(results[0][0])
+
+    def test_alert_row_multiple_checks_same_name(self):
+        yaml_str = """\
+evaluation_interval: 1m
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'up'
+        values: '1x25'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: InstanceDown
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: InstanceDown
+        exp_alerts:
+          - exp_labels:
+              job: api
+      - eval_time: 4m
+        alertname: InstanceDown
+        exp_alerts: []
+      - eval_time: 18m
+        alertname: InstanceDown
+        exp_alerts: []
+"""
+        groups = parse_promtest_string(yaml_str)
+        results = plot_promtest(groups, show_plot=False, label_layout='readable')
         assert len(results) == 1
         import matplotlib.pyplot as plt
         plt.close(results[0][0])

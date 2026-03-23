@@ -14,6 +14,7 @@ Time model:
 """
 
 import re
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import List, Optional, Sequence, Tuple
@@ -427,6 +428,26 @@ def _eval_label_half_width_data(
     return 0.5 * w_in * span / max(axis_width_in, 0.2)
 
 
+def _callout_x_extent_for_row(
+    c: float,
+    half_w: float,
+    _gap_data: float,
+    row: int,
+) -> Tuple[float, float]:
+    """Data-space x extent for a callout on ``row`` (even=left anchor, odd=right).
+
+    Drawn labels use ``ha='left'`` on even rows and ``ha='right'`` on odd rows, so the
+    bbox lies almost entirely to the right or left of the eval time. Symmetric
+    ``[c - hw, c + hw]`` packing falsely treats later left-anchored labels as colliding
+    with earlier ones and wastes vertical tracks. Separation uses ``gap_data`` only in the
+    overlap test, not as bbox padding (padding already lives in ``half_w`` inflation).
+    """
+    w = 2.0 * half_w
+    if row % 2 == 0:
+        return c, c + w
+    return c - w, c
+
+
 def _pack_eval_callout_rows(
     centers: Sequence[float],
     half_widths: Sequence[float],
@@ -434,8 +455,8 @@ def _pack_eval_callout_rows(
 ) -> Tuple[List[int], int]:
     """Greedy track assignment: minimum rows so x-extents do not overlap within a row.
 
-    Classic interval-graph colouring / resource allocation: sort by centre, place each
-    interval on the first row where it does not intersect existing intervals (plus gap).
+    Intervals match **drawn** geometry: even rows extend right from the anchor, odd rows
+    left (same alternation as ``ha`` in ``_annotate_eval_lines`` / alert panel).
     """
     n = len(centers)
     if n == 0:
@@ -447,9 +468,9 @@ def _pack_eval_callout_rows(
     for i in order:
         c = centers[i]
         hw = half_widths[i]
-        lo, hi = c - hw, c + hw
         placed = False
         for r, intervals in enumerate(row_intervals):
+            lo, hi = _callout_x_extent_for_row(c, hw, gap_data, r)
             ok = True
             for lo2, hi2 in intervals:
                 if not (hi + gap_data <= lo2 or hi2 + gap_data <= lo):
@@ -461,10 +482,61 @@ def _pack_eval_callout_rows(
                 placed = True
                 break
         if not placed:
-            rows[i] = len(row_intervals)
+            r = len(row_intervals)
+            lo, hi = _callout_x_extent_for_row(c, hw, gap_data, r)
+            rows[i] = r
             row_intervals.append([(lo, hi)])
 
     return rows, len(row_intervals)
+
+
+def _alert_panel_annotation_layout(
+    centers: Sequence[float],
+    texts: Sequence[str],
+    fontsize: float,
+    xlim_lo: float,
+    xlim_hi: float,
+    axis_width_in: float,
+    interval_min: float,
+    *,
+    label_layout: str,
+) -> Tuple[List[float], List[str], int]:
+    """Stack alert-row label offsets (points) and ha so boxes do not overlap in x (per alert name row).
+
+    Returns ``(dy_points, ha_list, n_tiers)`` where ``n_tiers`` is the number of vertical stack bands used.
+    """
+    n = len(centers)
+    if n == 0:
+        return [], [], 0
+    half_ws = [
+        _eval_label_half_width_data(t, fontsize, xlim_lo, xlim_hi, axis_width_in) * 1.08
+        for t in texts
+    ]
+    gap = max(interval_min * 0.12, (xlim_hi - xlim_lo) * 0.004)
+    rows, n_tiers = _pack_eval_callout_rows(list(centers), half_ws, gap)
+    gap_pt = 12.0 if label_layout == 'compact' else 15.0
+    dys = [float(r * gap_pt) for r in rows]
+    has = ['left' if r % 2 == 0 else 'right' for r in rows]
+    return dys, has, n_tiers
+
+
+def _alert_panel_extra_ylim_top(
+    ax,
+    n_alert_rows: int,
+    max_pack_tiers: int,
+    label_layout: str,
+) -> float:
+    """Extra y-axis span (data coords) above the top alert row for stacked label offsets in points."""
+    if max_pack_tiers <= 1:
+        return 0.0
+    gap_pt = 12.0 if label_layout == 'compact' else 15.0
+    fs = 7 if label_layout != 'compact' else 6
+    max_dy_pt = (max_pack_tiers - 1) * gap_pt + fs * 2.0 + 20.0
+    fig = ax.figure
+    pos = ax.get_position()
+    axis_h_in = max(fig.get_figheight() * pos.height, 0.05)
+    y_span = max(float(n_alert_rows), 1.0)
+    return (max_dy_pt / 72.0) / axis_h_in * y_span
 
 
 def _eval_callout_label_metrics(
@@ -869,8 +941,22 @@ def _draw_promtest_time_column(
             if len(raw_display) > 60:
                 raw_display = raw_display[:57] + '...'
             subtitle += f'    values: {raw_display!r}'
-        ax.set_title(subtitle, fontsize=8.5, color=cs['text'],
-                     loc='left', fontstyle='italic', pad=4)
+        # Top-row series key (metric + values string) sits under the plot so stacked
+        # eval/alert callouts (above axes fraction 1) do not cover it.
+        series_key_below = si == 0 and (
+            len(column_axes) > 1 or bool(ann_in)
+        )
+        if series_key_below:
+            ax.set_title(
+                subtitle, fontsize=8.5, color=cs['text'],
+                loc='left', fontstyle='italic', y=-0.22,
+            )
+            ax.title.set_clip_on(False)
+        else:
+            ax.set_title(
+                subtitle, fontsize=8.5, color=cs['text'],
+                loc='left', fontstyle='italic', pad=4,
+            )
 
         if xs_s and ys_s:
             x0, x1 = ax.get_xlim()
@@ -901,41 +987,71 @@ def _draw_promtest_time_column(
              if x_lo - 1e-9 <= _td_to_minutes(ac.eval_time) <= x_hi + 1e-9],
             key=lambda a: (_td_to_minutes(a.eval_time), alert_y[a.alertname]),
         )
-        stack_key_counts = {}
 
+        ax_alert.set_xlim(xlim_lo, xlim_hi)
+
+        fig_alert = ax_alert.figure
+        pos_al = ax_alert.get_position()
+        axis_w_alert = max(fig_alert.get_figwidth() * pos_al.width, 0.2)
+        fs_alert = 7 if label_layout != 'compact' else 6
+
+        by_row = defaultdict(list)
         for ac in alert_draw_order:
             et = _td_to_minutes(ac.eval_time)
             y = alert_y[ac.alertname]
             is_firing = bool(ac.exp_alerts)
-            color = cs['alert_firing'] if is_firing else cs['alert_pending']
-            marker = 'D' if is_firing else 'o'
-            ax_alert.plot(et, y, marker, color=color, markersize=10,
-                          zorder=4)
             label_text = 'FIRING' if is_firing else 'no alerts'
             label_full = (
                 f'{ac.alertname} @ {_format_duration_short(ac.eval_time)} — {label_text}'
             )
-            if label_layout == 'legacy':
-                dy = 0
-                ha, off_x = 'left', 8
-            else:
-                sk = (round(et, 5), y)
-                stack_key_counts[sk] = stack_key_counts.get(sk, 0) + 1
-                k = stack_key_counts[sk] - 1
-                dy = k * 12
-                ha = 'left' if k % 2 == 0 else 'right'
-                off_x = 10 if ha == 'left' else -10
-            fs = 7 if label_layout != 'compact' else 6
             if label_layout == 'compact' and len(label_full) > 42:
                 label_full = label_full[:39] + '...'
-            ax_alert.annotate(
-                label_full, (et, y),
-                textcoords='offset points', xytext=(off_x, dy),
-                ha=ha, va='center', fontsize=fs, color=color,
-                fontweight='bold',
-                bbox=dict(boxstyle='round,pad=0.3', fc='white',
-                          ec=color, alpha=0.85, linewidth=0.8),
-            )
+            by_row[y].append((ac, et, label_full))
+
+        row_plans: List[Tuple[float, list, List[float], List[str]]] = []
+        max_tiers = 1
+        for y in sorted(by_row.keys()):
+            bucket = sorted(by_row[y], key=lambda t: t[1])
+            centers_b = [t[1] for t in bucket]
+            texts_b = [t[2] for t in bucket]
+            if label_layout == 'legacy':
+                dys = [0.0] * len(bucket)
+                has = ['left'] * len(bucket)
+                nt = 1
+            else:
+                dys, has, nt = _alert_panel_annotation_layout(
+                    centers_b, texts_b, fs_alert,
+                    xlim_lo, xlim_hi, axis_w_alert, interval_min,
+                    label_layout=label_layout,
+                )
+            max_tiers = max(max_tiers, nt)
+            row_plans.append((y, bucket, dys, has))
+
+        extra_y = _alert_panel_extra_ylim_top(
+            ax_alert, len(alert_names), max_tiers, label_layout,
+        )
+        ax_alert.set_ylim(-0.5, len(alert_names) - 0.5 + extra_y)
+
+        for y, bucket, dys, has in row_plans:
+            for i, (ac, et, label_full) in enumerate(bucket):
+                is_firing = bool(ac.exp_alerts)
+                color = cs['alert_firing'] if is_firing else cs['alert_pending']
+                marker = 'D' if is_firing else 'o'
+                ax_alert.plot(et, y, marker, color=color, markersize=10,
+                              zorder=4)
+                ha = has[i]
+                if label_layout == 'legacy':
+                    off_x = 8
+                else:
+                    off_x = 10 if ha == 'left' else -10
+                ax_alert.annotate(
+                    label_full, (et, y),
+                    textcoords='offset points', xytext=(off_x, dys[i]),
+                    ha=ha, va='center', fontsize=fs_alert, color=color,
+                    fontweight='bold', clip_on=True, zorder=5,
+                    bbox=dict(boxstyle='round,pad=0.3', fc='white',
+                              ec=color, alpha=0.85, linewidth=0.8),
+                )
 
         for ep in group.eval_points:
             et = _td_to_minutes(ep.eval_time)
@@ -945,8 +1061,6 @@ def _draw_promtest_time_column(
 
         ax_alert.set_yticks(range(len(alert_names)))
         ax_alert.set_yticklabels(alert_names, fontsize=9)
-        ax_alert.set_ylim(-0.5, len(alert_names) - 0.5)
-        ax_alert.set_xlim(xlim_lo, xlim_hi)
         ax_alert.set_ylabel('', fontsize=8)
         ax_alert.set_title('Alert Checks', fontsize=8.5, color=cs['text'],
                            loc='left', fontstyle='italic', pad=4)
@@ -1086,7 +1200,7 @@ def plot_promtest(groups, figsize=None, show_plot=True, output_file=None,
         if n_cols == 1:
             fig, axs_1d = plt.subplots(
                 n_rows, 1, figsize=(fig_w, fig_h), sharex=True,
-                gridspec_kw={'hspace': 0.45},
+                gridspec_kw={'hspace': 0.52 if n_rows > 1 else 0.45},
             )
             fig._promtest_callout_annos = []
             if n_rows == 1:
@@ -1104,7 +1218,10 @@ def plot_promtest(groups, figsize=None, show_plot=True, output_file=None,
                 n_rows, n_cols,
                 figsize=(fig_w_scaled, fig_h),
                 sharex='col',
-                gridspec_kw={'hspace': 0.45, 'width_ratios': ratios},
+                gridspec_kw={
+                    'hspace': 0.52 if n_rows > 1 else 0.45,
+                    'width_ratios': ratios,
+                },
             )
             fig._promtest_callout_annos = []
             axs_arr = np.asarray(axs_grid)
@@ -1153,7 +1270,11 @@ def plot_promtest(groups, figsize=None, show_plot=True, output_file=None,
             )
             top_margin = 1.0 - reserve_in / max(fig_h, 1e-6)
             top_margin = max(0.40, min(0.96, top_margin))
-        fig.subplots_adjust(hspace=0.45, top=top_margin, bottom=0.13)
+        fig.subplots_adjust(
+            hspace=0.52 if n_rows > 1 else 0.45,
+            top=top_margin,
+            bottom=0.13,
+        )
 
         _apply_promtest_callout_anchor_accents(fig)
 

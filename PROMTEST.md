@@ -41,7 +41,7 @@ Dense tests often stack eval lines, value callouts, and alert text in the same r
 
 | Value | Behaviour |
 |-------|-----------|
-| **`readable`** (default) | **Interval packing** for eval/alert callouts: each label gets a row track so estimated label widths on the time axis do not overlap; checkpoints that are far apart horizontally can **share a row** (greedy track assignment). A **vertical stroke** sits flush on the outer **left** or **right** edge of each callout box (leading vs trailing); glyphs are padded inward so they do not touch the bar. Boxes use `ha=left` / `ha=right` with the anchor at the checkpoint time. Step value labels use a minimum horizontal gap and alternate above/below; alert annotations stack when they share the same time. |
+| **`readable`** (default) | **Interval packing** for eval/alert **callouts** on series axes: each label gets a row track so estimated label widths on the time axis do not overlap; checkpoints that are far apart horizontally can **share a row** (greedy track assignment). A **vertical stroke** sits flush on the outer **left** or **right** edge of each callout box (leading vs trailing); glyphs are padded inward so they do not touch the bar. Boxes use `ha=left` / `ha=right` with the anchor at the checkpoint time. On the **Alert Checks** row, boxed labels for the same `alertname` use the same packing (extra vertical offset in points) when nearby `eval_time`s would otherwise overlap. Step value labels use a minimum horizontal gap and alternate above/below. |
 | **`compact`** | Same packing as readable with **shorter text and smaller fonts**; fewer step value labels (larger minimum gap). |
 | **`legacy`** | Original placement (matches older releases). |
 

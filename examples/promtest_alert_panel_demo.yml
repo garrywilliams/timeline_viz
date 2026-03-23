@@ -1,0 +1,43 @@
+# Many alert_rule_test checkpoints on the same alertname (close in time) to show
+# label packing on the Alert Checks row. Also a second alert for two horizontal tracks.
+#
+#   uv run python examples/gen_charts.py
+#   # or:
+#   timelineviz examples/promtest_alert_panel_demo.yml --promtest --no-show -o images/_ap \
+#     --promtest-label-layout readable
+
+evaluation_interval: 1m
+tests:
+  - name: alert_panel_label_packing
+    interval: 1m
+    input_series:
+      - series: 'up{job="api"}'
+        values: '1+0x24'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: HighErrorRate
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: HighErrorRate
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+      - eval_time: 4m
+        alertname: HighErrorRate
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: HighErrorRate
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+      - eval_time: 8m
+        alertname: HighErrorRate
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: DiskPressure
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: DiskPressure
+        exp_alerts:
+          - exp_labels:
+              mount: data
