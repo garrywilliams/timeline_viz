@@ -382,8 +382,7 @@ def _run_event_log(args):
               file=sys.stderr)
         return 1
 
-    if output_file:
-        print(f"Saved event log timeline to {output_file}")
+    # Save path is already printed by plot_event_log_timeline / _plot_sorted_events
     print("Successfully generated event log timeline.")
     return 0
 
