@@ -7,7 +7,7 @@
 Timeline visualisation for CSV data and Prometheus test files.
 
 <!-- Image URLs use raw.githubusercontent.com so they render on PyPI; branch must match default (main). -->
-![Example Timeline](https://raw.githubusercontent.com/garrywilliams/timeline_viz/main/images/timeline1.png)
+![Example CSV timeline (wide format, with a time-gap break)](https://raw.githubusercontent.com/garrywilliams/timeline_viz/main/images/timeline1.png)
 
 ## Features
 
@@ -96,6 +96,10 @@ plot_event_log_timeline(
 
 A small sample file is in [`examples/incident_log.csv`](https://github.com/garrywilliams/timeline_viz/blob/main/examples/incident_log.csv).
 
+The diagram below is from that sample, using the CLI flags above (**`ERROR`** and **`WARN`** rows only, `message` as the label):
+
+![Long-format event log timeline (incident_log.csv, ERROR and WARN only)](https://raw.githubusercontent.com/garrywilliams/timeline_viz/main/images/event_log_timeline.png)
+
 ### Prometheus Test Timelines
 
 Visualise `promtool` unit-test YAML files — see series values change over time, where evaluations happen, and when alerts fire.
@@ -112,7 +116,7 @@ groups = parse_promtest_file("my_rules_test.yml")
 plot_promtest(groups, output_file="promtest_timeline.png")
 ```
 
-![Promtest Example](https://raw.githubusercontent.com/garrywilliams/timeline_viz/main/images/promtest_example_1.png)
+![Promtest example: interval-packed callouts](https://raw.githubusercontent.com/garrywilliams/timeline_viz/main/images/promtest_label_multi.png)
 
 Charts are self-documenting — each subplot shows the metric name and raw notation, value labels appear at transition points, eval/alert vertical lines are labelled, and a legend strip at the bottom explains all marker types.
 

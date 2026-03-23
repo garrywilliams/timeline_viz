@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-03-24
+
+### Added
+
+- **Promtest label layouts:** `plot_promtest(..., label_layout=...)` and CLI **`--promtest-label-layout`** with **`readable`** (default), **`compact`**, and **`legacy`**. Readable/compact use **interval packing** so eval/alert callouts on different minutes can share a vertical track when their estimated widths do not overlap; figure height follows the packed row count.
+- **Callout styling:** vertical accent on the leading or trailing box edge (flush with the frame), inward text padding from the bar, and point-based vertical spacing between rows.
+- **Examples:** `examples/promtest_label_minimal.yml`, `examples/promtest_label_multi.yml`, and updates to `promtest_label_demo.yml` for comparing layouts.
+- **Docs asset:** `images/event_log_timeline.png` plus a README figure for **long-format** `--event-log` using `examples/incident_log.csv` (ERROR/WARN filter), alongside existing promtest label screenshots.
+
+### Changed
+
+- Promtest multi-column **time breaks** (`break_gap_minutes` / `--promtest-break-gap`): shared x-scale per column, aligned duration tick formatting, and x-tick labels only on the bottom row; ticks omit negative minutes when padding extends left of 0.
+- README hero image restored to wide-format CSV example **`timeline1.png`**; promtest quick-start figure uses **`promtest_label_multi.png`**.
+
+### Documentation
+
+- **PROMTEST.md:** label-layout behaviour, time-break details, checked-in figures for multi/readable fixtures, and commands for minimal/multi/dense demos.
+
 ## [0.2.1] - 2026-03-23
 
 ### Added

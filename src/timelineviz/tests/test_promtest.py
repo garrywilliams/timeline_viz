@@ -3,16 +3,23 @@ matplotlib.use('Agg')
 
 import pytest
 from datetime import timedelta
+from pathlib import Path
 
 import numpy as np
 
 from timelineviz.promtest import (
     parse_duration,
+    parse_promtest_file,
     expand_values,
     parse_promtest_string,
     plot_promtest,
     find_gap_clusters,
     _x_windows_from_gap_clusters,
+    _promtest_xtick_minutes,
+    _promtest_label_layout_validate,
+    _pack_eval_callout_rows,
+    _max_packed_eval_callout_rows,
+    _eval_callout_reserve_inches,
     _parse_metric_selector,
     _td_to_minutes,
     _format_duration_short,
@@ -265,6 +272,57 @@ class TestHelpers:
         assert _format_duration_short(timedelta(seconds=90)) == '1m30s'
         assert _format_duration_short(timedelta(0)) == '0s'
 
+    def test_pack_eval_callout_rows_empty(self):
+        assert _pack_eval_callout_rows([], [], 0.1) == ([], 0)
+
+    def test_pack_eval_callout_rows_well_spaced_one_row(self):
+        centers = [2.0, 8.0, 14.0]
+        half_w = [0.4, 0.4, 0.4]
+        rows, n_rows = _pack_eval_callout_rows(centers, half_w, 0.1)
+        assert n_rows == 1
+        assert rows == [0, 0, 0]
+
+    def test_pack_eval_callout_rows_overlapping_stacks(self):
+        centers = [5.0, 5.2, 5.4]
+        half_w = [2.0, 2.0, 2.0]
+        rows, n_rows = _pack_eval_callout_rows(centers, half_w, 0.05)
+        assert n_rows == 3
+        assert len(set(rows)) == 3
+
+    def test_max_packed_eval_callout_rows_multi_fixture(self):
+        groups = parse_promtest_file(
+            str(Path(__file__).resolve().parents[3] / 'examples' / 'promtest_label_multi.yml'),
+        )
+        g = groups[0]
+        ann = [
+            (_td_to_minutes(ep.eval_time), ep.expr, 'eval') for ep in g.eval_points
+        ] + [
+            (_td_to_minutes(ac.eval_time), ac.alertname, 'alert')
+            for ac in g.alert_checks
+        ]
+        windows = [(0.0, 14.0)]
+        ratios = [14.0]
+        n = _max_packed_eval_callout_rows(
+            ann, 'readable', windows, 1.0, fig_w_in=14.0, width_ratios=ratios,
+        )
+        assert n < len(ann)
+
+    def test_eval_callout_reserve_inches(self):
+        assert _eval_callout_reserve_inches(0, 'readable') == 0.0
+        r2 = _eval_callout_reserve_inches(2, 'readable')
+        assert r2 > 0
+        assert _eval_callout_reserve_inches(2, 'compact') < r2
+
+    def test_promtest_xtick_minutes_skips_negative(self):
+        ticks = _promtest_xtick_minutes(-2.0, 8.0, 1.0)
+        assert all(t >= 0 for t in ticks)
+        assert 0.0 in ticks or min(ticks) >= 0
+
+    def test_promtest_xtick_minutes_fallback(self):
+        ticks = _promtest_xtick_minutes(0.5, 0.8, 1.0)
+        assert len(ticks) >= 1
+        assert all(t >= 0 for t in ticks)
+
 
 # -----------------------------------------------------------------------
 # Visualisation (smoke tests)
@@ -335,6 +393,19 @@ tests:
     def test_empty_groups(self):
         results = plot_promtest([], show_plot=False)
         assert results == []
+
+    def test_label_multi_example_fixture(self, tmp_path):
+        repo = Path(__file__).resolve().parents[3]
+        yml = repo / 'examples' / 'promtest_label_multi.yml'
+        assert yml.is_file()
+        groups = parse_promtest_file(str(yml))
+        assert len(groups) == 1
+        assert len(groups[0].eval_points) == 4
+        assert len(groups[0].alert_checks) == 3
+        out = tmp_path / 'multi.png'
+        plot_promtest(groups, show_plot=False, output_file=str(out),
+                      label_layout='readable')
+        assert out.is_file()
 
 
 # -----------------------------------------------------------------------
@@ -409,3 +480,25 @@ class TestPlotPromtestBreakGap:
             plot_promtest(groups, show_plot=False, break_gap_minutes=0)
         with pytest.raises(ValueError, match='break_gap'):
             plot_promtest(groups, show_plot=False, break_gap_minutes=-1)
+
+    def test_label_layout_variants_smoke(self):
+        groups = parse_promtest_string(SAMPLE_YAML)
+        for layout in ('readable', 'legacy', 'compact'):
+            fig, axs = plot_promtest(groups, show_plot=False, label_layout=layout)[0]
+            assert fig is not None
+            import matplotlib.pyplot as plt
+            plt.close(fig)
+
+    def test_invalid_label_layout_raises(self):
+        groups = parse_promtest_string(SAMPLE_YAML)
+        with pytest.raises(ValueError, match='label_layout'):
+            plot_promtest(groups, show_plot=False, label_layout='nope')
+
+
+class TestLabelLayoutValidate:
+    def test_ok(self):
+        assert _promtest_label_layout_validate('readable') == 'readable'
+
+    def test_bad(self):
+        with pytest.raises(ValueError):
+            _promtest_label_layout_validate('wide')

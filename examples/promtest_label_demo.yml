@@ -1,0 +1,47 @@
+# Dense eval/alert checkpoints to compare label layouts:
+#
+#   timelineviz examples/promtest_label_demo.yml --promtest --no-show -o images/tmp_readable \
+#     --promtest-label-layout readable
+#   mv images/tmp_readable/promtest.png images/promtest_label_readable.png
+#
+# Repeat with legacy / compact and different output folders.
+
+evaluation_interval: 1m
+tests:
+  - name: label_layout_demo
+    interval: 1m
+    input_series:
+      - series: 'rate_metric'
+        values: '0+5x19'
+      - series: 'other_series'
+        values: '100x19'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: Spike
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+      - eval_time: 7m
+        alertname: Spike
+        exp_alerts: []
+    promql_expr_test:
+      - expr: rate_metric > 10
+        eval_time: 2m
+        exp_samples:
+          - labels: 'rate_metric'
+            value: 10
+      - expr: rate_metric > 20
+        eval_time: 4m
+        exp_samples:
+          - labels: 'rate_metric'
+            value: 20
+      - expr: rate_metric > 30
+        eval_time: 6m
+        exp_samples:
+          - labels: 'rate_metric'
+            value: 30
+      - expr: rate_metric > 40
+        eval_time: 8m
+        exp_samples:
+          - labels: 'rate_metric'
+            value: 40

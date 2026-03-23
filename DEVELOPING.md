@@ -84,11 +84,12 @@ make build
 
 ## Release Process
 
+0. **Land everything on the release branch** (usually `main`). If you use stacked PRs, merge them **in stack order** (base → tip) so `main` has the full release diff before you bump the version. **Tag only a commit that already includes all intended changes** — do not tag an unmerged PR branch for a final `vX.Y.Z` (use a **pre-release** tag on a branch only if you deliberately publish an rc).
 1. Bump version in `src/timelineviz/_version.py`
 2. Update `CHANGELOG.md`
 3. Commit, tag, push:
    ```bash
-   git tag v0.1.0
+   git tag vX.Y.Z   # e.g. v0.3.0
    git push origin main --tags
    ```
 4. Publish to PyPI:

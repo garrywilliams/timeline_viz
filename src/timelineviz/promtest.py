@@ -353,6 +353,36 @@ def _x_windows_from_gap_clusters(
     return windows
 
 
+def _promtest_xtick_minutes(
+    xlim_lo: float, xlim_hi: float, interval_min: float,
+) -> List[float]:
+    """Tick positions (minutes) for promtest x-axes; omit negative offsets.
+
+    Padding can make ``xlim_lo`` negative; promtest time is still a forward offset
+    from 0, so ticks are only at non-negative multiples of ``interval_min``.
+    """
+    if interval_min <= 0:
+        lo = max(xlim_lo, 0.0)
+        hi = max(xlim_hi, lo)
+        return [lo, hi] if hi > lo else [lo]
+
+    lo_step = int(np.floor(xlim_lo / interval_min)) * interval_min
+    hi_step = int(np.ceil(xlim_hi / interval_min)) * interval_min
+    tick_positions = []
+    t = max(lo_step, 0.0)
+    while t <= hi_step + interval_min * 0.5:
+        if xlim_lo - 1e-9 <= t <= xlim_hi + 1e-9:
+            tick_positions.append(t)
+        t += interval_min
+    if not tick_positions:
+        clamp_lo = max(xlim_lo, 0.0)
+        clamp_hi = max(xlim_hi, clamp_lo)
+        if clamp_hi <= clamp_lo:
+            clamp_hi = clamp_lo + interval_min
+        tick_positions = [clamp_lo, clamp_hi]
+    return tick_positions
+
+
 def _indices_covering_x_window(xs: Sequence[float], x_lo: float, x_hi: float) -> range:
     """Index range into monotonic ``xs`` for step plots spanning [x_lo, x_hi]."""
     if not xs:
@@ -371,6 +401,335 @@ def _indices_covering_x_window(xs: Sequence[float], x_lo: float, x_hi: float) ->
     if lo_i > hi_i:
         return range(0, 0)
     return range(lo_i, hi_i + 1)
+
+
+def _promtest_label_layout_validate(layout: str) -> str:
+    allowed = ('readable', 'legacy', 'compact')
+    if layout not in allowed:
+        raise ValueError(f'label_layout must be one of {allowed}, not {layout!r}')
+    return layout
+
+
+def _eval_label_half_width_data(
+    text: str,
+    fontsize: float,
+    x_lo: float,
+    x_hi: float,
+    axis_width_in: float,
+) -> float:
+    """Half-width of the callout in x data units (symmetric around anchor)."""
+    span = max(x_hi - x_lo, 1e-9)
+    lines = text.split('\n')
+    max_line_len = max(len(line) for line in lines)
+    w_pt = max_line_len * fontsize * 0.58 + 18.0
+    w_pt = min(max(w_pt, fontsize * 10.0), 260.0)
+    w_in = w_pt / 72.0
+    return 0.5 * w_in * span / max(axis_width_in, 0.2)
+
+
+def _pack_eval_callout_rows(
+    centers: Sequence[float],
+    half_widths: Sequence[float],
+    gap_data: float,
+) -> Tuple[List[int], int]:
+    """Greedy track assignment: minimum rows so x-extents do not overlap within a row.
+
+    Classic interval-graph colouring / resource allocation: sort by centre, place each
+    interval on the first row where it does not intersect existing intervals (plus gap).
+    """
+    n = len(centers)
+    if n == 0:
+        return [], 0
+    order = sorted(range(n), key=lambda i: (centers[i], i))
+    row_intervals: List[List[Tuple[float, float]]] = []
+    rows = [0] * n
+
+    for i in order:
+        c = centers[i]
+        hw = half_widths[i]
+        lo, hi = c - hw, c + hw
+        placed = False
+        for r, intervals in enumerate(row_intervals):
+            ok = True
+            for lo2, hi2 in intervals:
+                if not (hi + gap_data <= lo2 or hi2 + gap_data <= lo):
+                    ok = False
+                    break
+            if ok:
+                intervals.append((lo, hi))
+                rows[i] = r
+                placed = True
+                break
+        if not placed:
+            rows[i] = len(row_intervals)
+            row_intervals.append([(lo, hi)])
+
+    return rows, len(row_intervals)
+
+
+def _eval_callout_label_metrics(
+    ann_sorted: Sequence[Tuple[float, str, str]],
+    max_chars: int,
+    fontsize: float,
+    xlim_lo: float,
+    xlim_hi: float,
+    axis_width_in: float,
+) -> Tuple[List[float], List[float], List[str]]:
+    centers: List[float] = []
+    half_ws: List[float] = []
+    texts: List[str] = []
+    for et, label, kind in ann_sorted:
+        if kind == 'eval':
+            text = f'eval: {label}'
+        else:
+            text = f'alert: {label}'
+        if len(text) > max_chars:
+            text = text[: max_chars - 3] + '...'
+        time_str = _format_duration_short(timedelta(minutes=et))
+        full = f'{text}\n@ {time_str}'
+        centers.append(et)
+        half_ws.append(
+            _eval_label_half_width_data(
+                full, fontsize, xlim_lo, xlim_hi, axis_width_in,
+            ),
+        )
+        texts.append(full)
+    return centers, half_ws, texts
+
+
+def _max_packed_eval_callout_rows(
+    eval_annotations: Sequence[Tuple[float, str, str]],
+    label_layout: str,
+    windows: Sequence[Tuple[float, float]],
+    interval_min: float,
+    fig_w_in: float,
+    width_ratios: Sequence[float],
+) -> int:
+    """Largest number of callout rows needed in any time column (for figure sizing)."""
+    layout = _promtest_label_layout_validate(label_layout)
+    max_chars = 24 if layout == 'compact' else 34
+    fontsize = 5 if layout == 'compact' else 6
+    sum_r = float(sum(width_ratios)) if width_ratios else 1.0
+    subplot_x_frac = 0.76
+    max_rows = 0
+    for (x_lo, x_hi), wr in zip(windows, width_ratios):
+        ann_in = [
+            (et, lab, k) for et, lab, k in eval_annotations
+            if x_lo - 1e-9 <= et <= x_hi + 1e-9
+        ]
+        if not ann_in:
+            continue
+        ann_sorted = sorted(ann_in, key=lambda t: t[0])
+        x_pad = max((x_hi - x_lo) * 0.08, interval_min * 0.5)
+        xlim_lo, xlim_hi = x_lo - x_pad, x_hi + x_pad
+        col_frac = wr / sum_r
+        axis_w_in = max(fig_w_in * subplot_x_frac * col_frac, 0.35)
+        centers, half_ws, _ = _eval_callout_label_metrics(
+            ann_sorted, max_chars, fontsize, xlim_lo, xlim_hi, axis_w_in,
+        )
+        gap = max(interval_min * 0.12, (xlim_hi - xlim_lo) * 0.004)
+        half_infl = [hw * 1.12 for hw in half_ws]
+        _, n_rows = _pack_eval_callout_rows(centers, half_infl, gap)
+        max_rows = max(max_rows, n_rows)
+    return max_rows
+
+
+def _eval_callout_gap_pt(layout: str) -> float:
+    """Vertical spacing between stacked eval/alert callout rows (points)."""
+    return 17.0 if layout == 'compact' else 18.0
+
+
+def _eval_callout_reserve_inches(n_rows: int, layout: str) -> float:
+    """Height above the top subplot edge needed for stacked callouts (inches)."""
+    if n_rows <= 0:
+        return 0.0
+    gap_pt = _eval_callout_gap_pt(layout)
+    base_pt = 6.0
+    bbox_pt = 24.0
+    suptitle_slack_pt = 18.0
+    total_pt = base_pt + (n_rows - 1) * gap_pt + bbox_pt + suptitle_slack_pt
+    return total_pt / 72.0
+
+
+def _apply_promtest_callout_anchor_accents(fig) -> None:
+    """Draw a vertical stroke flush with the callout bbox outer edge (display px).
+
+    Leading boxes: bar on the **left** bbox edge; trailing boxes: bar on the **right**
+    edge — no inset gap between the thin frame and the accent. Text is padded inward
+    separately in ``_annotate_eval_lines``. Must run after ``subplots_adjust``.
+    """
+    specs = getattr(fig, '_promtest_callout_annos', None)
+    if not specs:
+        if hasattr(fig, '_promtest_callout_annos'):
+            delattr(fig, '_promtest_callout_annos')
+        return
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    tf_inv = fig.transFigure.inverted()
+    accent_lw = 1.55
+    z_acc = 26
+    for _ax, anno, ha, colour in specs:
+        bb = anno.get_window_extent(renderer=renderer)
+        x_pix = bb.x0 if ha == 'left' else bb.x1
+        p0 = tf_inv.transform((x_pix, bb.y0))
+        p1 = tf_inv.transform((x_pix, bb.y1))
+        line = plt.Line2D(
+            [p0[0], p1[0]], [p0[1], p1[1]],
+            transform=fig.transFigure,
+            color=colour,
+            linewidth=accent_lw,
+            solid_capstyle='projecting',
+            clip_on=False,
+            zorder=z_acc,
+            antialiased=True,
+        )
+        fig.add_artist(line)
+    delattr(fig, '_promtest_callout_annos')
+
+
+def _annotate_transitions(
+    ax, xs, ys, color, *, label_layout: str = 'readable', min_x_gap: Optional[float] = None,
+):
+    """Value labels at step transitions; optional minimum x-gap to reduce overlap."""
+    layout = _promtest_label_layout_validate(label_layout)
+    prev_val = None
+    candidates = []
+    for i, (x, y) in enumerate(zip(xs, ys)):
+        show = False
+        if i == 0:
+            show = True
+        elif y != prev_val:
+            show = True
+        elif i == len(xs) - 1:
+            show = True
+        if show:
+            candidates.append((x, y, i == 0, i == len(xs) - 1))
+        prev_val = y
+
+    if layout == 'legacy' or not candidates:
+        final = [(c[0], c[1]) for c in candidates]
+    else:
+        if min_x_gap is None:
+            min_x_gap = 1e-6
+        final = []
+        last_x = -1e30
+        for x, y, is_first, is_last in sorted(candidates, key=lambda t: t[0]):
+            if is_first or is_last:
+                final.append((x, y))
+                last_x = x
+            elif x - last_x >= min_x_gap:
+                final.append((x, y))
+                last_x = x
+
+    fs = 6 if layout == 'compact' else 7
+    for k, (x, y) in enumerate(final):
+        if layout == 'legacy':
+            xytext, va = (0, 8), 'bottom'
+        else:
+            if k % 2 == 0:
+                xytext, va = (0, 10), 'bottom'
+            else:
+                xytext, va = (0, -14), 'top'
+        if y == int(y):
+            val_str = str(int(y))
+        else:
+            val_str = f'{y:.2g}'
+        ax.annotate(
+            val_str, (x, y),
+            textcoords='offset points', xytext=xytext,
+            ha='center', va=va, fontsize=fs,
+            color=color, fontweight='bold', alpha=0.85,
+        )
+
+
+def _annotate_eval_lines(
+    ax,
+    annotations,
+    cs,
+    *,
+    label_layout: str = 'readable',
+    interval_min: float = 1.0,
+) -> int:
+    """Labels for eval/alert vertical lines; stagger when layout is not legacy.
+
+    ``readable`` / ``compact`` assign each callout to a **row track** using greedy
+    interval packing: labels whose estimated x-extents overlap use different rows;
+    well-separated times can share a row (standard resource-allocation on intervals).
+
+    Returns the number of vertical callout rows used (0 if none drawn).
+    """
+    layout = _promtest_label_layout_validate(label_layout)
+    ann_sorted = sorted(annotations, key=lambda t: t[0])
+    max_chars = 24 if layout == 'compact' else 34
+    fontsize = 5 if layout == 'compact' else 6
+    gap_pt = _eval_callout_gap_pt(layout)
+    base_y_pt = 3.0
+
+    if not ann_sorted:
+        return 0
+
+    fig = ax.figure
+    x0, x1 = ax.get_xlim()
+    pos = ax.get_position()
+    axis_w_in = max(fig.get_figwidth() * pos.width, 0.2)
+    centers, half_ws, texts = _eval_callout_label_metrics(
+        ann_sorted, max_chars, fontsize, x0, x1, axis_w_in,
+    )
+
+    rows: List[int] = [0] * len(ann_sorted)
+    ha_for: List[str] = ['left'] * len(ann_sorted)
+    n_rows = 0
+    if layout != 'legacy':
+        gap = max(interval_min * 0.12, (x1 - x0) * 0.004)
+        half_infl = [hw * 1.12 for hw in half_ws]
+        rows, n_rows = _pack_eval_callout_rows(centers, half_infl, gap)
+        for ii in range(len(ann_sorted)):
+            ha_for[ii] = 'left' if rows[ii] % 2 == 0 else 'right'
+
+    for i, (et, label, kind) in enumerate(ann_sorted):
+        text = texts[i]
+        colour = cs['eval_line'] if kind == 'eval' else cs['alert_firing']
+
+        if layout == 'legacy':
+            ax.annotate(
+                text, (et, 1.0),
+                xycoords=('data', 'axes fraction'),
+                textcoords='offset points', xytext=(4, -4),
+                ha='left', va='top', fontsize=fontsize, color=colour,
+                fontweight='bold', alpha=0.9,
+                bbox=dict(boxstyle='round,pad=0.25', fc='white',
+                          ec=colour, alpha=0.85, linewidth=0.7),
+            )
+        else:
+            row = rows[i]
+            ha = ha_for[i]
+            lines = text.split('\n')
+            if ha == 'left':
+                lines[0] = '   ' + lines[0]
+                if len(lines) > 1:
+                    lines[1] = '   ' + lines[1]
+            else:
+                lines[0] = lines[0] + '   '
+                if len(lines) > 1:
+                    lines[1] = lines[1] + '   '
+            text = '\n'.join(lines)
+            y_off = base_y_pt + row * gap_pt
+            anno = ax.annotate(
+                text, (et, 1.0),
+                xycoords=('data', 'axes fraction'),
+                textcoords='offset points', xytext=(0, y_off),
+                ha=ha, va='bottom', fontsize=fontsize, color=colour,
+                fontweight='bold', alpha=0.9, clip_on=False, zorder=25,
+                bbox=dict(boxstyle='round,pad=0.26', fc='white',
+                          ec=colour, alpha=0.92, linewidth=0.42),
+            )
+            acc = getattr(fig, '_promtest_callout_annos', None)
+            if acc is not None:
+                acc.append((ax, anno, ha, colour))
+
+    if layout == 'legacy':
+        return 0
+    return n_rows
 
 
 def _add_promtest_column_slashes(fig, bottom_axes_row, slash_color: str) -> None:
@@ -431,8 +790,14 @@ def _draw_promtest_time_column(
     eval_annotations: list,
     interval_min: float,
     set_xlabel: bool,
-) -> None:
-    """Draw one horizontal time segment (column) of a promtest figure."""
+    label_layout: str = 'readable',
+) -> int:
+    """Draw one horizontal time segment (column) of a promtest figure.
+
+    Returns how many stacked eval/alert callout rows were used on the top
+    series axis (0 if none).
+    """
+    eval_callout_rows = 0
     n_series = len(group.series)
     has_alerts = bool(group.alert_checks)
 
@@ -508,20 +873,38 @@ def _draw_promtest_time_column(
                      loc='left', fontstyle='italic', pad=4)
 
         if xs_s and ys_s:
-            _annotate_transitions(ax, xs_s, ys_s, color)
+            x0, x1 = ax.get_xlim()
+            span = max(x1 - x0, 1e-9)
+            if label_layout == 'legacy':
+                mgap = 0.0
+            else:
+                mgap = max(span * 0.035, interval_min * 1.2)
+                if label_layout == 'compact':
+                    mgap *= 1.65
+            _annotate_transitions(
+                ax, xs_s, ys_s, color, label_layout=label_layout, min_x_gap=mgap,
+            )
 
     if ann_in and n_series > 0:
-        _annotate_eval_lines(column_axes[0], ann_in, cs)
+        eval_callout_rows = _annotate_eval_lines(
+            column_axes[0], ann_in, cs, label_layout=label_layout,
+            interval_min=interval_min,
+        )
 
     if has_alerts:
         ax_alert = column_axes[-1]
         alert_names = list({ac.alertname for ac in group.alert_checks})
         alert_y = {name: i for i, name in enumerate(alert_names)}
 
-        for ac in group.alert_checks:
+        alert_draw_order = sorted(
+            [ac for ac in group.alert_checks
+             if x_lo - 1e-9 <= _td_to_minutes(ac.eval_time) <= x_hi + 1e-9],
+            key=lambda a: (_td_to_minutes(a.eval_time), alert_y[a.alertname]),
+        )
+        stack_key_counts = {}
+
+        for ac in alert_draw_order:
             et = _td_to_minutes(ac.eval_time)
-            if not (x_lo - 1e-9 <= et <= x_hi + 1e-9):
-                continue
             y = alert_y[ac.alertname]
             is_firing = bool(ac.exp_alerts)
             color = cs['alert_firing'] if is_firing else cs['alert_pending']
@@ -532,10 +915,23 @@ def _draw_promtest_time_column(
             label_full = (
                 f'{ac.alertname} @ {_format_duration_short(ac.eval_time)} — {label_text}'
             )
+            if label_layout == 'legacy':
+                dy = 0
+                ha, off_x = 'left', 8
+            else:
+                sk = (round(et, 5), y)
+                stack_key_counts[sk] = stack_key_counts.get(sk, 0) + 1
+                k = stack_key_counts[sk] - 1
+                dy = k * 12
+                ha = 'left' if k % 2 == 0 else 'right'
+                off_x = 10 if ha == 'left' else -10
+            fs = 7 if label_layout != 'compact' else 6
+            if label_layout == 'compact' and len(label_full) > 42:
+                label_full = label_full[:39] + '...'
             ax_alert.annotate(
                 label_full, (et, y),
-                textcoords='offset points', xytext=(8, 0),
-                ha='left', va='center', fontsize=8, color=color,
+                textcoords='offset points', xytext=(off_x, dy),
+                ha=ha, va='center', fontsize=fs, color=color,
                 fontweight='bold',
                 bbox=dict(boxstyle='round,pad=0.3', fc='white',
                           ec=color, alpha=0.85, linewidth=0.8),
@@ -558,26 +954,18 @@ def _draw_promtest_time_column(
         ax_alert.set_facecolor(cs['background'])
 
     bottom_ax = column_axes[-1]
-    if interval_min > 0:
-        lo_step = int(np.floor(xlim_lo / interval_min)) * interval_min
-        hi_step = int(np.ceil(xlim_hi / interval_min)) * interval_min
-        tick_positions = []
-        t = lo_step
-        while t <= hi_step + interval_min * 0.5:
-            if xlim_lo - 1e-9 <= t <= xlim_hi + 1e-9:
-                tick_positions.append(t)
-            t += interval_min
-        if not tick_positions:
-            tick_positions = [xlim_lo, xlim_hi]
-    else:
-        tick_positions = [xlim_lo, xlim_hi]
-
-    bottom_ax.set_xticks(tick_positions)
+    tick_positions = _promtest_xtick_minutes(xlim_lo, xlim_hi, interval_min)
 
     def _fmt_tick(x, _pos):
         return _format_duration_short(timedelta(minutes=x))
 
-    bottom_ax.xaxis.set_major_formatter(FuncFormatter(_fmt_tick))
+    tick_fmt = FuncFormatter(_fmt_tick)
+    for ax in column_axes:
+        ax.set_xticks(tick_positions)
+        ax.xaxis.set_major_formatter(tick_fmt)
+        if ax is not bottom_ax:
+            ax.tick_params(labelbottom=False)
+
     if set_xlabel:
         bottom_ax.set_xlabel(
             f'Time offset  (interval: {_format_duration_short(group.interval)}, '
@@ -585,10 +973,12 @@ def _draw_promtest_time_column(
             fontsize=9, color=cs['text'],
         )
 
+    return eval_callout_rows
+
 
 def plot_promtest(groups, figsize=None, show_plot=True, output_file=None,
                   dpi=150, title=None, color_scheme=None,
-                  break_gap_minutes=None):
+                  break_gap_minutes=None, label_layout='readable'):
     """Visualise parsed promtool test groups.
 
     Parameters
@@ -613,6 +1003,12 @@ def plot_promtest(groups, figsize=None, show_plot=True, output_file=None,
         Anchors are ``0``, ``x_max``, and every eval / alert time. Matches the
         spirit of CSV ``threshold_days`` breaks. If ``None`` (default), one
         continuous x-axis (original behaviour).
+    label_layout : str, default ``'readable'``
+        How to place eval/alert callouts and step value labels to limit overlap:
+        ``'readable'`` (greedy interval packing for callout rows — well-separated
+        times can share a row; step value labels alternate above/below),
+        ``'compact'`` (smaller fonts and shorter strings, same packing),
+        or ``'legacy'`` (original placement).
 
     Returns
     -------
@@ -622,6 +1018,7 @@ def plot_promtest(groups, figsize=None, show_plot=True, output_file=None,
     """
     if break_gap_minutes is not None and break_gap_minutes <= 0:
         raise ValueError('break_gap_minutes must be positive when set')
+    _promtest_label_layout_validate(label_layout)
 
     cs = {**PROMTEST_COLOR_SCHEME, **(color_scheme or {})}
     results = []
@@ -672,19 +1069,33 @@ def plot_promtest(groups, figsize=None, show_plot=True, output_file=None,
         ratios = [max(w[1] - w[0], interval_min * 2) for w in windows]
         fig_w_scaled = fig_w * (0.65 + 0.35 * n_cols)
 
+        packed_eval_rows = 0
+        if label_layout != 'legacy' and eval_annotations:
+            packed_eval_rows = _max_packed_eval_callout_rows(
+                eval_annotations, label_layout, windows, interval_min,
+                fig_w_scaled, ratios,
+            )
+
+        if figsize is None and label_layout != 'legacy' and eval_annotations:
+            reserve_in = _eval_callout_reserve_inches(packed_eval_rows, label_layout)
+            fig_h = max(fig_h, reserve_in / 0.28)
+
         flat_axes = []
 
+        max_eval_callout_rows = 0
         if n_cols == 1:
             fig, axs_1d = plt.subplots(
                 n_rows, 1, figsize=(fig_w, fig_h), sharex=True,
                 gridspec_kw={'hspace': 0.45},
             )
+            fig._promtest_callout_annos = []
             if n_rows == 1:
                 axs_1d = [axs_1d]
             col_axes = list(axs_1d)
-            _draw_promtest_time_column(
+            max_eval_callout_rows = _draw_promtest_time_column(
                 col_axes, group, windows[0][0], windows[0][1], x_max,
                 cs, eval_annotations, interval_min, set_xlabel=True,
+                label_layout=label_layout,
             )
             flat_axes = col_axes
             bottom_row_for_slash = [col_axes[-1]]
@@ -692,9 +1103,10 @@ def plot_promtest(groups, figsize=None, show_plot=True, output_file=None,
             fig, axs_grid = plt.subplots(
                 n_rows, n_cols,
                 figsize=(fig_w_scaled, fig_h),
-                sharex=False,
+                sharex='col',
                 gridspec_kw={'hspace': 0.45, 'width_ratios': ratios},
             )
+            fig._promtest_callout_annos = []
             axs_arr = np.asarray(axs_grid)
             if axs_arr.ndim == 1:
                 if n_rows == 1:
@@ -705,11 +1117,13 @@ def plot_promtest(groups, figsize=None, show_plot=True, output_file=None,
             bottom_row_for_slash = []
             for j, (x_lo, x_hi) in enumerate(windows):
                 col_axes = [axs_grid[i, j] for i in range(n_rows)]
-                _draw_promtest_time_column(
+                r = _draw_promtest_time_column(
                     col_axes, group, x_lo, x_hi, x_max,
                     cs, eval_annotations, interval_min,
                     set_xlabel=(j == n_cols - 1),
+                    label_layout=label_layout,
                 )
+                max_eval_callout_rows = max(max_eval_callout_rows, r)
                 bottom_row_for_slash.append(col_axes[-1])
             for i in range(n_rows):
                 for j in range(n_cols):
@@ -731,7 +1145,17 @@ def plot_promtest(groups, figsize=None, show_plot=True, output_file=None,
                         bool(any(s.values and None in s.values for s in group.series)),
                         bool(any(s.values and 'stale' in s.values for s in group.series)))
 
-        fig.subplots_adjust(hspace=0.45, top=0.93, bottom=0.13)
+        if label_layout == 'legacy' or not eval_annotations:
+            top_margin = 0.93
+        else:
+            reserve_in = _eval_callout_reserve_inches(
+                max_eval_callout_rows, label_layout,
+            )
+            top_margin = 1.0 - reserve_in / max(fig_h, 1e-6)
+            top_margin = max(0.40, min(0.96, top_margin))
+        fig.subplots_adjust(hspace=0.45, top=top_margin, bottom=0.13)
+
+        _apply_promtest_callout_anchor_accents(fig)
 
         if n_cols > 1:
             fig.canvas.draw()
@@ -751,59 +1175,6 @@ def plot_promtest(groups, figsize=None, show_plot=True, output_file=None,
         results.append((fig, flat_axes))
 
     return results
-
-
-def _annotate_transitions(ax, xs, ys, color):
-    """Add small value labels at points where the value changes."""
-    prev_val = None
-    for i, (x, y) in enumerate(zip(xs, ys)):
-        show = False
-        if i == 0:
-            show = True
-        elif y != prev_val:
-            show = True
-        elif i == len(xs) - 1:
-            show = True
-
-        if show:
-            if y == int(y):
-                val_str = str(int(y))
-            else:
-                val_str = f'{y:.2g}'
-            ax.annotate(
-                val_str, (x, y),
-                textcoords='offset points', xytext=(0, 8),
-                ha='center', va='bottom', fontsize=7,
-                color=color, fontweight='bold', alpha=0.85,
-            )
-        prev_val = y
-
-
-def _annotate_eval_lines(ax, annotations, cs):
-    """Add rotated labels at the top of the subplot for eval/alert vertical lines."""
-    for et, label, kind in annotations:
-        if kind == 'eval':
-            text = f'eval: {label}'
-            colour = cs['eval_line']
-        else:
-            text = f'alert: {label}'
-            colour = cs['alert_firing']
-
-        if len(text) > 40:
-            text = text[:37] + '...'
-
-        time_str = _format_duration_short(timedelta(minutes=et))
-        text = f'{text}\n@ {time_str}'
-
-        ax.annotate(
-            text, (et, 1.0),
-            xycoords=('data', 'axes fraction'),
-            textcoords='offset points', xytext=(4, -4),
-            ha='left', va='top', fontsize=7, color=colour,
-            fontweight='bold', alpha=0.9,
-            bbox=dict(boxstyle='round,pad=0.25', fc='white',
-                      ec=colour, alpha=0.85, linewidth=0.7),
-        )
 
 
 def _add_legend_key(fig, cs, has_evals, has_alerts, has_gaps, has_stale):
