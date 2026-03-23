@@ -25,7 +25,13 @@ timelineviz my_rules_test.yml --promtest --output-dir images --no-show
 
 # Custom size and resolution
 timelineviz my_rules_test.yml --promtest --figsize 18,10 --dpi 300
+
+# Split the chart when eval/alert times are far apart (like CSV long-gap breaks)
+timelineviz examples/promtest_time_breaks.yml --promtest --promtest-break-gap 40 \
+  --output-dir images --no-show
 ```
+
+Anchors for breaks are **`0`**, the **end of the series timeline**, and **every** `eval_time` / alert `eval_time`. If the gap between two consecutive anchors (in minutes) is greater than `--promtest-break-gap`, the figure uses **multiple horizontal panels** with slash markers between them, similar to wide-format CSV timelines and `threshold_days`.
 
 ### Python API
 
@@ -53,6 +59,9 @@ tests:
 """
 groups = parse_promtest_string(yaml_str)
 plot_promtest(groups)
+
+# Optional: break the x-axis across long idle gaps (minutes between anchors)
+plot_promtest(groups, break_gap_minutes=60)
 ```
 
 ### Jupyter Notebook

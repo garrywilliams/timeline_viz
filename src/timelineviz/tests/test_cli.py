@@ -69,6 +69,23 @@ def test_parse_args_event_log_conflicts_with_promtest():
         ])
 
 
+def test_parse_args_promtest_break_gap_requires_promtest():
+    with pytest.raises(SystemExit):
+        parse_args(['t.yml', '--promtest-break-gap', '30'])
+
+
+def test_parse_args_promtest_break_gap_invalid():
+    with pytest.raises(SystemExit):
+        parse_args(['t.yml', '--promtest', '--promtest-break-gap', '0'])
+    with pytest.raises(SystemExit):
+        parse_args(['t.yml', '--promtest', '--promtest-break-gap', '-5'])
+
+
+def test_parse_args_promtest_break_gap_ok():
+    args = parse_args(['t.yml', '--promtest', '--promtest-break-gap', '45'])
+    assert args.promtest_break_gap_minutes == 45.0
+
+
 def test_parse_args_event_log_ok():
     args = parse_args([
         'log.csv',
@@ -637,3 +654,30 @@ def test_main_event_log_success_without_output_dir(tmp_path):
         '--no-show',
     ])
     assert result == 0
+
+
+def test_main_promtest_with_break_gap(tmp_path):
+    yml = tmp_path / 'gap.yml'
+    yml.write_text(
+        'evaluation_interval: 1m\n'
+        'tests:\n'
+        '  - interval: 1m\n'
+        '    input_series:\n'
+        '      - series: s\n'
+        "        values: '0+0x9 1+0x4'\n"
+        '    promql_expr_test:\n'
+        '      - expr: a\n'
+        '        eval_time: 5m\n'
+        '      - expr: b\n'
+        '        eval_time: 12m\n'
+    )
+    out = tmp_path / 'out'
+    result = main([
+        str(yml),
+        '--promtest',
+        '--promtest-break-gap', '3',
+        '--output-dir', str(out),
+        '--no-show',
+    ])
+    assert result == 0
+    assert (out / 'promtest.png').is_file()

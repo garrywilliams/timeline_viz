@@ -146,6 +146,14 @@ Example usage:
         action='store_true',
         help='Treat input as a promtool unit-test YAML file and visualise series/alerts'
     )
+    parser.add_argument(
+        '--promtest-break-gap',
+        dest='promtest_break_gap_minutes',
+        type=float,
+        default=None,
+        metavar='MINUTES',
+        help='With --promtest: split the time axis when gaps between anchors (0, end, eval/alert times) exceed this many minutes',
+    )
 
     parser.add_argument(
         '--event-log',
@@ -204,6 +212,11 @@ Example usage:
 
     if args.event_log and args.promtest:
         parser.error("--event-log cannot be combined with --promtest")
+    if args.promtest_break_gap_minutes is not None:
+        if not args.promtest:
+            parser.error("--promtest-break-gap requires --promtest")
+        if args.promtest_break_gap_minutes <= 0:
+            parser.error("--promtest-break-gap must be positive")
     if args.event_log and not args.log_time_column:
         parser.error("--event-log requires --log-time-column")
             
@@ -404,6 +417,9 @@ def _run_promtest(args):
         print("No test groups found in the file.", file=sys.stderr)
         return 1
 
+    if args.output_dir:
+        os.makedirs(args.output_dir, exist_ok=True)
+
     try:
         results = plot_promtest(
             groups,
@@ -411,6 +427,7 @@ def _run_promtest(args):
             show_plot=not args.no_show,
             output_file=os.path.join(args.output_dir, 'promtest.png') if args.output_dir else None,
             dpi=args.dpi,
+            break_gap_minutes=args.promtest_break_gap_minutes,
         )
         print(f"Successfully visualised {len(results)} test group(s).")
         return 0

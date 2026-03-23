@@ -16,8 +16,9 @@ Time model:
 import re
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import Optional
+from typing import List, Optional, Sequence, Tuple
 
+import numpy as np
 import yaml
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
@@ -297,6 +298,108 @@ def _format_duration_short(td):
     return ''.join(parts)
 
 
+def find_gap_clusters(sorted_anchors: np.ndarray, gap_threshold: float) -> List[np.ndarray]:
+    """Split sorted 1-D anchor positions into clusters when successive gap > threshold.
+
+    Used to break promtest timelines across long idle gaps (same idea as CSV
+    ``threshold_days``, but axis is minutes).
+
+    Parameters
+    ----------
+    sorted_anchors : np.ndarray
+        Sorted unique time positions (e.g. minutes).
+    gap_threshold : float
+        If consecutive anchors differ by more than this, start a new cluster.
+
+    Returns
+    -------
+    list of np.ndarray
+        One array of anchor positions per cluster.
+    """
+    a = np.asarray(sorted_anchors, dtype=float)
+    if a.size <= 1:
+        return [a] if a.size == 1 else []
+    clusters = []
+    start = 0
+    for i in range(a.size - 1):
+        if a[i + 1] - a[i] > gap_threshold:
+            clusters.append(a[start : i + 1])
+            start = i + 1
+    clusters.append(a[start:])
+    return clusters
+
+
+def _x_windows_from_gap_clusters(
+    anchors: Sequence[float],
+    gap_threshold: float,
+    x_max: float,
+    interval_min: float,
+) -> List[Tuple[float, float]]:
+    """Turn clustered anchors into (x_lo, x_hi) plot windows with padding."""
+    arr = np.sort(np.unique(np.asarray(anchors, dtype=float)))
+    if arr.size == 0:
+        return [(0.0, float(x_max))]
+    clusters = find_gap_clusters(arr, gap_threshold)
+    windows = []
+    for c in clusters:
+        mn, mx = float(np.min(c)), float(np.max(c))
+        span = max(mx - mn, interval_min * 0.5)
+        pad = max(span * 0.08, interval_min * 0.5)
+        x_lo = max(0.0, mn - pad)
+        x_hi = min(float(x_max), mx + pad)
+        if x_lo > x_hi:
+            x_lo, x_hi = x_hi, x_lo
+        windows.append((x_lo, x_hi))
+    return windows
+
+
+def _indices_covering_x_window(xs: Sequence[float], x_lo: float, x_hi: float) -> range:
+    """Index range into monotonic ``xs`` for step plots spanning [x_lo, x_hi]."""
+    if not xs:
+        return range(0, 0)
+    xs = list(xs)
+    lo_i = 0
+    while lo_i < len(xs) and xs[lo_i] < x_lo:
+        lo_i += 1
+    if lo_i > 0:
+        lo_i -= 1
+    hi_i = len(xs) - 1
+    while hi_i >= 0 and xs[hi_i] > x_hi:
+        hi_i -= 1
+    if hi_i < len(xs) - 1 and hi_i >= 0:
+        hi_i += 1
+    if lo_i > hi_i:
+        return range(0, 0)
+    return range(lo_i, hi_i + 1)
+
+
+def _add_promtest_column_slashes(fig, bottom_axes_row, slash_color: str) -> None:
+    """Draw slash markers between adjacent column axes (figure coordinates)."""
+    n = len(bottom_axes_row)
+    if n < 2:
+        return
+    for j in range(n - 1):
+        right_pos = bottom_axes_row[j].get_position().x1
+        left_pos = bottom_axes_row[j + 1].get_position().x0
+        mid_pos = (right_pos + left_pos) / 2
+        y_center = 0.5
+        slash_height = 0.05
+        slash_gap = 0.015
+        for offset in [-slash_gap / 2, slash_gap / 2]:
+            x_mid = mid_pos + offset
+            slash = plt.Line2D(
+                [x_mid - slash_height / 6, x_mid + slash_height / 6],
+                [y_center - slash_height / 2, y_center + slash_height / 2],
+                transform=fig.transFigure,
+                color=slash_color,
+                linewidth=2.5,
+                solid_capstyle='round',
+                clip_on=False,
+                zorder=10,
+            )
+            fig.add_artist(slash)
+
+
 # ---------------------------------------------------------------------------
 # Main plot function
 # ---------------------------------------------------------------------------
@@ -314,11 +417,178 @@ PROMTEST_COLOR_SCHEME = {
     'text': '#333333',
     'stale_marker': '#999999',
     'missing_marker': '#cccccc',
+    'slashes': '#0046be',
 }
 
 
+def _draw_promtest_time_column(
+    column_axes,
+    group,
+    x_lo: float,
+    x_hi: float,
+    x_max: float,
+    cs: dict,
+    eval_annotations: list,
+    interval_min: float,
+    set_xlabel: bool,
+) -> None:
+    """Draw one horizontal time segment (column) of a promtest figure."""
+    n_series = len(group.series)
+    has_alerts = bool(group.alert_checks)
+
+    ann_in = [(et, lab, k) for et, lab, k in eval_annotations
+              if x_lo - 1e-9 <= et <= x_hi + 1e-9]
+
+    x_pad_col = max((x_hi - x_lo) * 0.08, interval_min * 0.5)
+    xlim_lo = x_lo - x_pad_col
+    xlim_hi = x_hi + x_pad_col
+
+    for si, series in enumerate(group.series):
+        ax = column_axes[si]
+        color = cs['series_colors'][si % len(cs['series_colors'])]
+        xs, ys = [], []
+        stale_xs = []
+        gap_xs = []
+        for vi, val in enumerate(series.values):
+            t = _td_to_minutes(series.interval * vi)
+            if val is None:
+                gap_xs.append(t)
+            elif val == 'stale':
+                stale_xs.append(t)
+            else:
+                xs.append(t)
+                ys.append(val)
+
+        idx = _indices_covering_x_window(xs, x_lo, x_hi)
+        xs_s = [xs[i] for i in idx] if xs else []
+        ys_s = [ys[i] for i in idx] if ys else []
+
+        if xs_s:
+            ax.step(xs_s, ys_s, where='post', color=color, linewidth=1.5,
+                    zorder=3)
+            ax.plot(xs_s, ys_s, 'o', color=color, markersize=5, zorder=4)
+
+        stale_in = [t for t in stale_xs if x_lo <= t <= x_hi]
+        if stale_in:
+            ax.plot(stale_in, [0] * len(stale_in), 'x',
+                    color=cs['stale_marker'], markersize=8,
+                    markeredgewidth=2, zorder=4)
+
+        gap_in = [t for t in gap_xs if x_lo <= t <= x_hi]
+        if gap_in:
+            ax.plot(gap_in, [0] * len(gap_in), 's',
+                    color=cs['missing_marker'], markersize=6,
+                    markerfacecolor='none', markeredgewidth=1.5,
+                    zorder=4)
+
+        for ep in group.eval_points:
+            et = _td_to_minutes(ep.eval_time)
+            if x_lo - 1e-9 <= et <= x_hi + 1e-9:
+                ax.axvline(x=et, color=cs['eval_line'], linestyle='--',
+                           linewidth=1.2, alpha=0.7, zorder=2)
+
+        for ac in group.alert_checks:
+            et = _td_to_minutes(ac.eval_time)
+            if x_lo - 1e-9 <= et <= x_hi + 1e-9:
+                ax.axvline(x=et, color=cs['alert_firing'], linestyle=':',
+                           linewidth=1.2, alpha=0.6, zorder=2)
+
+        ax.set_ylabel('value', fontsize=8, color='#888888')
+        ax.set_xlim(xlim_lo, xlim_hi)
+        ax.grid(True, alpha=0.3, color=cs['grid'])
+        ax.set_facecolor(cs['background'])
+
+        subtitle = series.display_name
+        if series.raw_values:
+            raw_display = series.raw_values
+            if len(raw_display) > 60:
+                raw_display = raw_display[:57] + '...'
+            subtitle += f'    values: {raw_display!r}'
+        ax.set_title(subtitle, fontsize=8.5, color=cs['text'],
+                     loc='left', fontstyle='italic', pad=4)
+
+        if xs_s and ys_s:
+            _annotate_transitions(ax, xs_s, ys_s, color)
+
+    if ann_in and n_series > 0:
+        _annotate_eval_lines(column_axes[0], ann_in, cs)
+
+    if has_alerts:
+        ax_alert = column_axes[-1]
+        alert_names = list({ac.alertname for ac in group.alert_checks})
+        alert_y = {name: i for i, name in enumerate(alert_names)}
+
+        for ac in group.alert_checks:
+            et = _td_to_minutes(ac.eval_time)
+            if not (x_lo - 1e-9 <= et <= x_hi + 1e-9):
+                continue
+            y = alert_y[ac.alertname]
+            is_firing = bool(ac.exp_alerts)
+            color = cs['alert_firing'] if is_firing else cs['alert_pending']
+            marker = 'D' if is_firing else 'o'
+            ax_alert.plot(et, y, marker, color=color, markersize=10,
+                          zorder=4)
+            label_text = 'FIRING' if is_firing else 'no alerts'
+            label_full = (
+                f'{ac.alertname} @ {_format_duration_short(ac.eval_time)} — {label_text}'
+            )
+            ax_alert.annotate(
+                label_full, (et, y),
+                textcoords='offset points', xytext=(8, 0),
+                ha='left', va='center', fontsize=8, color=color,
+                fontweight='bold',
+                bbox=dict(boxstyle='round,pad=0.3', fc='white',
+                          ec=color, alpha=0.85, linewidth=0.8),
+            )
+
+        for ep in group.eval_points:
+            et = _td_to_minutes(ep.eval_time)
+            if x_lo - 1e-9 <= et <= x_hi + 1e-9:
+                ax_alert.axvline(x=et, color=cs['eval_line'], linestyle='--',
+                                 linewidth=1.2, alpha=0.7, zorder=2)
+
+        ax_alert.set_yticks(range(len(alert_names)))
+        ax_alert.set_yticklabels(alert_names, fontsize=9)
+        ax_alert.set_ylim(-0.5, len(alert_names) - 0.5)
+        ax_alert.set_xlim(xlim_lo, xlim_hi)
+        ax_alert.set_ylabel('', fontsize=8)
+        ax_alert.set_title('Alert Checks', fontsize=8.5, color=cs['text'],
+                           loc='left', fontstyle='italic', pad=4)
+        ax_alert.grid(True, alpha=0.3, color=cs['grid'])
+        ax_alert.set_facecolor(cs['background'])
+
+    bottom_ax = column_axes[-1]
+    if interval_min > 0:
+        lo_step = int(np.floor(xlim_lo / interval_min)) * interval_min
+        hi_step = int(np.ceil(xlim_hi / interval_min)) * interval_min
+        tick_positions = []
+        t = lo_step
+        while t <= hi_step + interval_min * 0.5:
+            if xlim_lo - 1e-9 <= t <= xlim_hi + 1e-9:
+                tick_positions.append(t)
+            t += interval_min
+        if not tick_positions:
+            tick_positions = [xlim_lo, xlim_hi]
+    else:
+        tick_positions = [xlim_lo, xlim_hi]
+
+    bottom_ax.set_xticks(tick_positions)
+
+    def _fmt_tick(x, _pos):
+        return _format_duration_short(timedelta(minutes=x))
+
+    bottom_ax.xaxis.set_major_formatter(FuncFormatter(_fmt_tick))
+    if set_xlabel:
+        bottom_ax.set_xlabel(
+            f'Time offset  (interval: {_format_duration_short(group.interval)}, '
+            f'each tick = 1 step)',
+            fontsize=9, color=cs['text'],
+        )
+
+
 def plot_promtest(groups, figsize=None, show_plot=True, output_file=None,
-                  dpi=150, title=None, color_scheme=None):
+                  dpi=150, title=None, color_scheme=None,
+                  break_gap_minutes=None):
     """Visualise parsed promtool test groups.
 
     Parameters
@@ -337,12 +607,22 @@ def plot_promtest(groups, figsize=None, show_plot=True, output_file=None,
         Overall figure title.
     color_scheme : dict, optional
         Override ``PROMTEST_COLOR_SCHEME`` keys.
+    break_gap_minutes : float, optional
+        If set, split the horizontal axis into multiple panels when the gap
+        between consecutive **anchor** times exceeds this many minutes.
+        Anchors are ``0``, ``x_max``, and every eval / alert time. Matches the
+        spirit of CSV ``threshold_days`` breaks. If ``None`` (default), one
+        continuous x-axis (original behaviour).
 
     Returns
     -------
     list[tuple[plt.Figure, list[plt.Axes]]]
-        One (fig, axes) pair per TestGroup.
+        One (fig, axes) pair per TestGroup. Axes are listed row-major when
+        multiple time columns exist (series rows, then columns left-to-right).
     """
+    if break_gap_minutes is not None and break_gap_minutes <= 0:
+        raise ValueError('break_gap_minutes must be positive when set')
+
     cs = {**PROMTEST_COLOR_SCHEME, **(color_scheme or {})}
     results = []
 
@@ -358,14 +638,6 @@ def plot_promtest(groups, figsize=None, show_plot=True, output_file=None,
         else:
             fig_w, fig_h = figsize
 
-        fig, axs = plt.subplots(
-            n_rows, 1, figsize=(fig_w, fig_h), sharex=True,
-            gridspec_kw={'hspace': 0.45},
-        )
-        if n_rows == 1:
-            axs = [axs]
-
-        # Determine x-axis extent (in minutes)
         all_durations = []
         for s in group.series:
             if s.values:
@@ -376,147 +648,73 @@ def plot_promtest(groups, figsize=None, show_plot=True, output_file=None,
         for ac in group.alert_checks:
             all_durations.append(_td_to_minutes(ac.eval_time))
 
-        x_max = max(all_durations) if all_durations else 10
-        x_pad = max(x_max * 0.08, _td_to_minutes(group.interval) * 0.5)
+        x_max = max(all_durations) if all_durations else 10.0
 
-        # Collect eval/alert annotations
         eval_annotations = []
         for ep in group.eval_points:
             eval_annotations.append((_td_to_minutes(ep.eval_time), ep.expr, 'eval'))
         for ac in group.alert_checks:
             eval_annotations.append((_td_to_minutes(ac.eval_time), ac.alertname, 'alert'))
 
-        # --- plot each series ---
-        for si, series in enumerate(group.series):
-            ax = axs[si]
-            color = cs['series_colors'][si % len(cs['series_colors'])]
-            xs, ys = [], []
-            stale_xs = []
-            gap_xs = []
-            for vi, val in enumerate(series.values):
-                t = _td_to_minutes(series.interval * vi)
-                if val is None:
-                    gap_xs.append(t)
-                elif val == 'stale':
-                    stale_xs.append(t)
-                else:
-                    xs.append(t)
-                    ys.append(val)
-
-            # Step plot for numeric values
-            if xs:
-                ax.step(xs, ys, where='post', color=color, linewidth=1.5,
-                        zorder=3)
-                ax.plot(xs, ys, 'o', color=color, markersize=5, zorder=4)
-
-            # Mark stale samples
-            if stale_xs:
-                ax.plot(stale_xs, [0] * len(stale_xs), 'x',
-                        color=cs['stale_marker'], markersize=8,
-                        markeredgewidth=2, zorder=4)
-
-            # Mark missing samples
-            if gap_xs:
-                ax.plot(gap_xs, [0] * len(gap_xs), 's',
-                        color=cs['missing_marker'], markersize=6,
-                        markerfacecolor='none', markeredgewidth=1.5,
-                        zorder=4)
-
-            # Eval-time vertical lines on every subplot
-            for ep in group.eval_points:
-                et = _td_to_minutes(ep.eval_time)
-                ax.axvline(x=et, color=cs['eval_line'], linestyle='--',
-                           linewidth=1.2, alpha=0.7, zorder=2)
-
-            # Alert check vertical lines
-            for ac in group.alert_checks:
-                et = _td_to_minutes(ac.eval_time)
-                ax.axvline(x=et, color=cs['alert_firing'], linestyle=':',
-                           linewidth=1.2, alpha=0.6, zorder=2)
-
-            ax.set_ylabel('value', fontsize=8, color='#888888')
-            ax.set_xlim(-x_pad, x_max + x_pad)
-            ax.grid(True, alpha=0.3, color=cs['grid'])
-            ax.set_facecolor(cs['background'])
-
-            # --- Annotation: series title with raw notation ---
-            subtitle = series.display_name
-            if series.raw_values:
-                raw_display = series.raw_values
-                if len(raw_display) > 60:
-                    raw_display = raw_display[:57] + '...'
-                subtitle += f'    values: {raw_display!r}'
-            ax.set_title(subtitle, fontsize=8.5, color=cs['text'],
-                         loc='left', fontstyle='italic', pad=4)
-
-            # --- Annotation: value at key transition points ---
-            if xs and ys:
-                _annotate_transitions(ax, xs, ys, color)
-
-        # --- Annotate eval/alert labels at top of first subplot ---
-        if eval_annotations and n_series > 0:
-            _annotate_eval_lines(axs[0], eval_annotations, cs)
-
-        # --- alert bar chart row ---
-        if has_alerts:
-            ax_alert = axs[-1]
-            alert_names = list({ac.alertname for ac in group.alert_checks})
-            alert_y = {name: i for i, name in enumerate(alert_names)}
-
-            for ac in group.alert_checks:
-                y = alert_y[ac.alertname]
-                et = _td_to_minutes(ac.eval_time)
-                is_firing = bool(ac.exp_alerts)
-                color = cs['alert_firing'] if is_firing else cs['alert_pending']
-                marker = 'D' if is_firing else 'o'
-                ax_alert.plot(et, y, marker, color=color, markersize=10,
-                              zorder=4)
-                label_text = 'FIRING' if is_firing else 'no alerts'
-                label_full = f'{ac.alertname} @ {_format_duration_short(ac.eval_time)} — {label_text}'
-                ax_alert.annotate(
-                    label_full, (et, y),
-                    textcoords='offset points', xytext=(8, 0),
-                    ha='left', va='center', fontsize=8, color=color,
-                    fontweight='bold',
-                    bbox=dict(boxstyle='round,pad=0.3', fc='white',
-                              ec=color, alpha=0.85, linewidth=0.8),
-                )
-
-            for ep in group.eval_points:
-                et = _td_to_minutes(ep.eval_time)
-                ax_alert.axvline(x=et, color=cs['eval_line'], linestyle='--',
-                                 linewidth=1.2, alpha=0.7, zorder=2)
-
-            ax_alert.set_yticks(range(len(alert_names)))
-            ax_alert.set_yticklabels(alert_names, fontsize=9)
-            ax_alert.set_ylim(-0.5, len(alert_names) - 0.5)
-            ax_alert.set_xlim(-x_pad, x_max + x_pad)
-            ax_alert.set_ylabel('', fontsize=8)
-            ax_alert.set_title('Alert Checks', fontsize=8.5, color=cs['text'],
-                               loc='left', fontstyle='italic', pad=4)
-            ax_alert.grid(True, alpha=0.3, color=cs['grid'])
-            ax_alert.set_facecolor(cs['background'])
-
-        # --- shared x-axis formatting ---
-        bottom_ax = axs[-1]
         interval_min = _td_to_minutes(group.interval)
 
-        # place ticks at each interval step
-        tick_count = int(x_max / interval_min) + 1 if interval_min > 0 else 1
-        tick_positions = [i * interval_min for i in range(tick_count + 1)]
-        bottom_ax.set_xticks(tick_positions)
+        if break_gap_minutes is None:
+            windows = [(0.0, float(x_max))]
+        else:
+            anchors = [0.0, float(x_max)]
+            for et, _, _ in eval_annotations:
+                anchors.append(float(et))
+            windows = _x_windows_from_gap_clusters(
+                anchors, break_gap_minutes, x_max, interval_min,
+            )
 
-        def _fmt_tick(x, _pos):
-            td = timedelta(minutes=x)
-            return _format_duration_short(td)
+        n_cols = len(windows)
+        ratios = [max(w[1] - w[0], interval_min * 2) for w in windows]
+        fig_w_scaled = fig_w * (0.65 + 0.35 * n_cols)
 
-        bottom_ax.xaxis.set_major_formatter(FuncFormatter(_fmt_tick))
-        bottom_ax.set_xlabel(
-            f'Time offset  (interval: {_format_duration_short(group.interval)}, '
-            f'each tick = 1 step)',
-            fontsize=9, color=cs['text'])
+        flat_axes = []
 
-        # --- title ---
+        if n_cols == 1:
+            fig, axs_1d = plt.subplots(
+                n_rows, 1, figsize=(fig_w, fig_h), sharex=True,
+                gridspec_kw={'hspace': 0.45},
+            )
+            if n_rows == 1:
+                axs_1d = [axs_1d]
+            col_axes = list(axs_1d)
+            _draw_promtest_time_column(
+                col_axes, group, windows[0][0], windows[0][1], x_max,
+                cs, eval_annotations, interval_min, set_xlabel=True,
+            )
+            flat_axes = col_axes
+            bottom_row_for_slash = [col_axes[-1]]
+        else:
+            fig, axs_grid = plt.subplots(
+                n_rows, n_cols,
+                figsize=(fig_w_scaled, fig_h),
+                sharex=False,
+                gridspec_kw={'hspace': 0.45, 'width_ratios': ratios},
+            )
+            axs_arr = np.asarray(axs_grid)
+            if axs_arr.ndim == 1:
+                if n_rows == 1:
+                    axs_arr = axs_arr.reshape(1, n_cols)
+                else:
+                    axs_arr = axs_arr.reshape(n_rows, 1)
+            axs_grid = axs_arr
+            bottom_row_for_slash = []
+            for j, (x_lo, x_hi) in enumerate(windows):
+                col_axes = [axs_grid[i, j] for i in range(n_rows)]
+                _draw_promtest_time_column(
+                    col_axes, group, x_lo, x_hi, x_max,
+                    cs, eval_annotations, interval_min,
+                    set_xlabel=(j == n_cols - 1),
+                )
+                bottom_row_for_slash.append(col_axes[-1])
+            for i in range(n_rows):
+                for j in range(n_cols):
+                    flat_axes.append(axs_grid[i, j])
+
         fig_title = title
         if fig_title is None:
             fig_title = 'Promtest Timeline'
@@ -524,15 +722,20 @@ def plot_promtest(groups, figsize=None, show_plot=True, output_file=None,
                 fig_title += f' — {group.name}'
             if len(groups) > 1:
                 fig_title += f' (group {gi + 1}/{len(groups)})'
+        if break_gap_minutes is not None and n_cols > 1:
+            fig_title += f'  (time breaks > {break_gap_minutes:g}m)'
         fig.suptitle(fig_title, fontsize=14, fontweight='bold', color=cs['text'],
                      y=0.99)
 
-        # --- legend key (visual guide) at bottom ---
         _add_legend_key(fig, cs, has_evals, has_alerts,
                         bool(any(s.values and None in s.values for s in group.series)),
                         bool(any(s.values and 'stale' in s.values for s in group.series)))
 
         fig.subplots_adjust(hspace=0.45, top=0.93, bottom=0.13)
+
+        if n_cols > 1:
+            fig.canvas.draw()
+            _add_promtest_column_slashes(fig, bottom_row_for_slash, cs['slashes'])
 
         if output_file:
             suffix = f'_{gi}' if len(groups) > 1 else ''
@@ -545,7 +748,7 @@ def plot_promtest(groups, figsize=None, show_plot=True, output_file=None,
         else:
             plt.close(fig)
 
-        results.append((fig, list(axs)))
+        results.append((fig, flat_axes))
 
     return results
 

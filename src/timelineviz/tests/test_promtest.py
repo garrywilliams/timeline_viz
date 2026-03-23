@@ -4,11 +4,15 @@ matplotlib.use('Agg')
 import pytest
 from datetime import timedelta
 
+import numpy as np
+
 from timelineviz.promtest import (
     parse_duration,
     expand_values,
     parse_promtest_string,
     plot_promtest,
+    find_gap_clusters,
+    _x_windows_from_gap_clusters,
     _parse_metric_selector,
     _td_to_minutes,
     _format_duration_short,
@@ -331,3 +335,77 @@ tests:
     def test_empty_groups(self):
         results = plot_promtest([], show_plot=False)
         assert results == []
+
+
+# -----------------------------------------------------------------------
+# Time-gap clusters (promtest breaks)
+# -----------------------------------------------------------------------
+
+class TestFindGapClusters:
+    def test_single_point(self):
+        c = find_gap_clusters(np.array([5.0]), 10.0)
+        assert len(c) == 1
+        assert list(c[0]) == [5.0]
+
+    def test_no_break(self):
+        c = find_gap_clusters(np.array([0.0, 5.0, 10.0]), 30.0)
+        assert len(c) == 1
+        assert list(c[0]) == [0.0, 5.0, 10.0]
+
+    def test_break_middle(self):
+        c = find_gap_clusters(np.array([0.0, 5.0, 52.0, 54.0]), 40.0)
+        assert len(c) == 2
+        assert list(c[0]) == [0.0, 5.0]
+        assert list(c[1]) == [52.0, 54.0]
+
+
+class TestXWindowsFromGapClusters:
+    def test_two_windows(self):
+        w = _x_windows_from_gap_clusters([0, 5, 52, 54], 40, 54, 1.0)
+        assert len(w) == 2
+        assert w[0][0] <= 0
+        assert w[0][1] <= 10
+        assert w[1][0] >= 50
+        assert w[1][1] <= 54
+
+
+YAML_SPARSE_EVAL = """\
+evaluation_interval: 1m
+tests:
+  - interval: 1m
+    input_series:
+      - series: 's'
+        values: '0+0x49 1+0x4'
+    promql_expr_test:
+      - expr: a
+        eval_time: 5m
+      - expr: b
+        eval_time: 52m
+"""
+
+
+class TestPlotPromtestBreakGap:
+    def test_single_panel_when_threshold_large(self):
+        groups = parse_promtest_string(YAML_SPARSE_EVAL)
+        results = plot_promtest(groups, show_plot=False, break_gap_minutes=500)
+        fig, axs = results[0]
+        n_series = len(groups[0].series)
+        assert len(axs) == n_series
+        import matplotlib.pyplot as plt
+        plt.close(fig)
+
+    def test_multi_panel_when_threshold_small(self):
+        groups = parse_promtest_string(YAML_SPARSE_EVAL)
+        results = plot_promtest(groups, show_plot=False, break_gap_minutes=40)
+        fig, axs = results[0]
+        n_series = len(groups[0].series)
+        assert len(axs) == n_series * 2
+        import matplotlib.pyplot as plt
+        plt.close(fig)
+
+    def test_invalid_break_gap_raises(self):
+        groups = parse_promtest_string(YAML_SPARSE_EVAL)
+        with pytest.raises(ValueError, match='break_gap'):
+            plot_promtest(groups, show_plot=False, break_gap_minutes=0)
+        with pytest.raises(ValueError, match='break_gap'):
+            plot_promtest(groups, show_plot=False, break_gap_minutes=-1)
