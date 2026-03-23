@@ -2,10 +2,13 @@
 UV ?= uv
 PYTEST ?= pytest
 PKG := timelineviz
+# Long-format / event-log smoke run (override for your own CSV)
+EVENT_LOG_CSV ?= examples/incident_log.csv
+EVENT_LOG_OUT ?= images
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install sync test test-html test-verbose test-no-cov build clean publish version cli-help example-charts
+.PHONY: help install sync test test-html test-verbose test-no-cov build clean publish version cli-help example-charts example-event-log
 
 help:
 	@echo "timelineviz — targets"
@@ -22,6 +25,8 @@ help:
 	@echo "  make version         Print package version"
 	@echo "  make cli-help        timelineviz --help"
 	@echo "  make example-charts  Regenerate docs images (examples/gen_charts.py)"
+	@echo "  make example-event-log  Smoke-test --event-log on EVENT_LOG_CSV → EVENT_LOG_OUT/event_log_timeline.png"
+	@echo "                          (override: make example-event-log EVENT_LOG_CSV=foo.csv EVENT_LOG_OUT=out)"
 	@echo ""
 
 install:
@@ -65,3 +70,13 @@ cli-help:
 
 example-charts:
 	$(UV) run python examples/gen_charts.py
+
+example-event-log:
+	$(UV) run timelineviz $(EVENT_LOG_CSV) --event-log \
+		--log-time-column ts \
+		--log-label-column message \
+		--log-filter-column level \
+		--log-include ERROR WARN \
+		--output-dir $(EVENT_LOG_OUT) \
+		--no-show
+	@echo "Wrote $(EVENT_LOG_OUT)/event_log_timeline.png"

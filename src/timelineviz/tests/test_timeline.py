@@ -8,9 +8,11 @@ import os
 from timelineviz.timeline import (
     plot_timeline,
     plot_multiple_timelines,
+    plot_event_log_timeline,
     find_clusters,
     format_timestamp,
-    clean_column_name
+    clean_column_name,
+    _plot_sorted_events,
 )
 from timelineviz.utils import create_color_scheme
 import pytz
@@ -654,4 +656,138 @@ def test_plot_multiple_timelines_empty_data():
     # Test with empty data
     df = pd.DataFrame(columns=['id', 'ts'])
     result = plot_multiple_timelines(df, ['ts'])
-    assert result == [] 
+    assert result == []
+
+
+def test_plot_event_log_timeline_basic():
+    df = pd.DataFrame({
+        'ts': [
+            datetime(2024, 6, 1, 10, 0, 0),
+            datetime(2024, 6, 1, 10, 5, 0),
+            datetime(2024, 6, 1, 10, 10, 0),
+        ],
+        'message': ['a', 'b', 'c'],
+        'level': ['INFO', 'WARN', 'ERROR'],
+    })
+    fig, axs = plot_event_log_timeline(
+        df,
+        timestamp_column='ts',
+        label_column='message',
+        show_plot=False,
+    )
+    assert isinstance(fig, plt.Figure)
+    assert axs is not None
+    plt.close(fig)
+
+
+def test_plot_event_log_timeline_filter_include():
+    df = pd.DataFrame({
+        'ts': [
+            datetime(2024, 6, 1, 10, 0, 0),
+            datetime(2024, 6, 1, 10, 1, 0),
+            datetime(2024, 6, 1, 10, 2, 0),
+        ],
+        'message': ['x', 'y', 'z'],
+        'level': ['DEBUG', 'ERROR', 'DEBUG'],
+    })
+    fig, _ = plot_event_log_timeline(
+        df,
+        timestamp_column='ts',
+        label_column='message',
+        filter_column='level',
+        include_values=['ERROR'],
+        show_plot=False,
+    )
+    assert isinstance(fig, plt.Figure)
+    plt.close(fig)
+
+
+def test_plot_event_log_timeline_filter_exclude():
+    df = pd.DataFrame({
+        'ts': [
+            datetime(2024, 6, 1, 10, 0, 0),
+            datetime(2024, 6, 1, 10, 1, 0),
+        ],
+        'kind': ['noise', 'signal'],
+    })
+    fig, _ = plot_event_log_timeline(
+        df,
+        timestamp_column='ts',
+        label_column='kind',
+        filter_column='kind',
+        exclude_values=['noise'],
+        show_plot=False,
+    )
+    assert isinstance(fig, plt.Figure)
+    plt.close(fig)
+
+
+def test_plot_event_log_timeline_empty_after_filter():
+    df = pd.DataFrame({
+        'ts': [datetime(2024, 6, 1, 10, 0, 0)],
+        'level': ['INFO'],
+    })
+    fig, axs = plot_event_log_timeline(
+        df,
+        timestamp_column='ts',
+        filter_column='level',
+        include_values=['ERROR'],
+        show_plot=False,
+    )
+    assert fig is None
+    assert axs is None
+
+
+def test_plot_event_log_timeline_no_labels():
+    df = pd.DataFrame({'ts': [datetime(2024, 6, 1, 10, 0, 0)]})
+    fig, _ = plot_event_log_timeline(df, timestamp_column='ts', show_plot=False)
+    assert isinstance(fig, plt.Figure)
+    plt.close(fig)
+
+
+def test_plot_sorted_events_empty():
+    fig, axs = _plot_sorted_events([], [], show_plot=False)
+    assert fig is None and axs is None
+    fig, axs = _plot_sorted_events([datetime(2024, 1, 1)], ['a', 'b'], show_plot=False)
+    assert fig is None and axs is None
+
+
+def test_plot_event_log_timeline_validation():
+    df = pd.DataFrame({'ts': [datetime(2024, 6, 1)]})
+    with pytest.raises(ValueError, match='filter_column is required when include_values'):
+        plot_event_log_timeline(
+            df, 'ts', include_values=['X'], show_plot=False,
+        )
+    with pytest.raises(ValueError, match='filter_column is required when exclude_values'):
+        plot_event_log_timeline(
+            df, 'ts', exclude_values=['X'], show_plot=False,
+        )
+    with pytest.raises(ValueError, match='not found'):
+        plot_event_log_timeline(df, 'missing_col', show_plot=False)
+    with pytest.raises(ValueError, match='label_column'):
+        plot_event_log_timeline(df, 'ts', label_column='nope', show_plot=False)
+    with pytest.raises(ValueError, match='filter_column'):
+        plot_event_log_timeline(
+            df, 'ts', filter_column='nope', include_values=['x'], show_plot=False,
+        )
+    with pytest.raises(ValueError, match='threshold_days'):
+        plot_event_log_timeline(df, 'ts', threshold_days=0, show_plot=False)
+        with pytest.raises(ValueError, match='DataFrame or path to CSV'):
+            plot_event_log_timeline(123, 'ts', show_plot=False)
+
+
+def test_plot_event_log_timeline_from_csv(tmp_path):
+    p = tmp_path / 'log.csv'
+    p.write_text(
+        'ts,msg,level\n'
+        '2024-01-01 10:00:00,hello,INFO\n'
+        '2024-01-01 10:01:00,bye,ERROR\n'
+    )
+    fig, _ = plot_event_log_timeline(
+        str(p),
+        timestamp_column='ts',
+        label_column='msg',
+        show_plot=False,
+    )
+    assert isinstance(fig, plt.Figure)
+    plt.close(fig)

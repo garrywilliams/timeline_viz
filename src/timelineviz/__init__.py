@@ -11,6 +11,11 @@ Quick start::
     df = pd.read_csv("events.csv")
     plot_timeline(df.iloc[0], ['created_at', 'updated_at', 'completed_at'])
 
+    # Long-format logs (one timestamp column, many rows)
+    from timelineviz import plot_event_log_timeline
+    plot_event_log_timeline("incident.csv", "ts", label_column="message",
+                            filter_column="level", include_values=["ERROR", "WARN"])
+
     # Prometheus test files
     from timelineviz import parse_promtest_file, plot_promtest
     groups = parse_promtest_file("rules_test.yml")
@@ -27,6 +32,7 @@ except PackageNotFoundError:
 from timelineviz.timeline import (
     plot_timeline,
     plot_multiple_timelines,
+    plot_event_log_timeline,
     find_clusters,
     format_timestamp,
 )
@@ -43,6 +49,7 @@ __all__ = [
     "__version__",
     "plot_timeline",
     "plot_multiple_timelines",
+    "plot_event_log_timeline",
     "find_clusters",
     "format_timestamp",
     "parse_promtest_file",
@@ -50,16 +57,4 @@ __all__ = [
     "plot_promtest",
     "expand_values",
     "parse_duration",
-]
-
-__all__ = [
-    'plot_timeline',
-    'plot_multiple_timelines',
-    'find_clusters',
-    'format_timestamp',
-    'parse_promtest_file',
-    'parse_promtest_string',
-    'plot_promtest',
-    'expand_values',
-    'parse_duration',
 ]

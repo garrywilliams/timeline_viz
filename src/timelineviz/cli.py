@@ -10,7 +10,11 @@ import os
 import sys
 import json
 import pandas as pd
-from timelineviz.timeline import plot_multiple_timelines, DEFAULT_COLOR_SCHEME
+from timelineviz.timeline import (
+    plot_multiple_timelines,
+    plot_event_log_timeline,
+    DEFAULT_COLOR_SCHEME,
+)
 from timelineviz.utils import create_color_scheme
 from timelineviz.promtest import parse_promtest_file, plot_promtest
 
@@ -44,6 +48,11 @@ Example usage:
   
   # Process a specific number of entities:
   timelineviz large_data.csv --max-entities 5
+
+  # Long-format log: one timestamp column, many rows (filter by level/type):
+  timelineviz incident.csv --event-log --log-time-column ts \\
+    --log-label-column message --log-filter-column level \\
+    --log-include ERROR WARN --output-dir out
 """
     )
     
@@ -137,6 +146,39 @@ Example usage:
         action='store_true',
         help='Treat input as a promtool unit-test YAML file and visualise series/alerts'
     )
+
+    parser.add_argument(
+        '--event-log',
+        action='store_true',
+        help='Long-format mode: one timestamp column across many rows (see --log-*)'
+    )
+    parser.add_argument(
+        '--log-time-column',
+        metavar='COL',
+        help='Timestamp column (required with --event-log)'
+    )
+    parser.add_argument(
+        '--log-label-column',
+        metavar='COL',
+        help='Column to use as the text label for each event'
+    )
+    parser.add_argument(
+        '--log-filter-column',
+        metavar='COL',
+        help='Column for --log-include / --log-exclude (e.g. level, event_type)'
+    )
+    parser.add_argument(
+        '--log-include',
+        nargs='+',
+        metavar='VALUE',
+        help='Keep only rows where the filter column equals one of these values'
+    )
+    parser.add_argument(
+        '--log-exclude',
+        nargs='+',
+        metavar='VALUE',
+        help='Drop rows where the filter column equals one of these values'
+    )
     
     # Parse the arguments
     args = parser.parse_args(args)
@@ -159,6 +201,11 @@ Example usage:
             args.label_mappings = json.loads(args.label_mappings)
         except json.JSONDecodeError:
             parser.error("Invalid JSON format for --label-mappings")
+
+    if args.event_log and args.promtest:
+        parser.error("--event-log cannot be combined with --promtest")
+    if args.event_log and not args.log_time_column:
+        parser.error("--event-log requires --log-time-column")
             
     return args
 
@@ -179,6 +226,10 @@ def main(args=None):
     if not os.path.isfile(args.csv_file):
         print(f"Error: File '{args.csv_file}' not found", file=sys.stderr)
         return 1
+
+    # --- Event log (long-format) mode ---
+    if args.event_log:
+        return _run_event_log(args)
 
     # --- Promtest mode ---
     if args.promtest:
@@ -217,8 +268,8 @@ def main(args=None):
             print(f"Error: Invalid color scheme: {e}")
             return 1
     
-    # Validate label mappings if provided
-    if args.label_mappings:
+    # Validate label mappings if provided (wide CSV mode only)
+    if args.label_mappings and not args.event_log:
         # Read CSV to get column names
         df = pd.read_csv(args.csv_file)
         invalid_columns = [col for col in args.label_mappings if col not in df.columns]
@@ -227,7 +278,7 @@ def main(args=None):
             return 1
     
     # Check if either timestamp columns or detection are specified
-    if not args.timestamp_columns and not args.detect_timestamps:
+    if not args.timestamp_columns and not args.detect_timestamps and not args.event_log:
         print("Warning: No timestamp columns specified and auto-detection disabled.", 
               "Will attempt to detect common timestamp column patterns anyway.",
               file=sys.stderr)
@@ -266,6 +317,76 @@ def main(args=None):
         import traceback
         traceback.print_exc()
         return 1
+
+def _run_event_log(args):
+    """Handle --event-log mode."""
+    try:
+        figsize = tuple(map(float, args.figsize.split(',')))
+        if len(figsize) != 2:
+            raise ValueError("Figure size must be width,height")
+    except ValueError as e:
+        print(f"Error parsing figure size: {e}", file=sys.stderr)
+        return 1
+
+    color_scheme = None
+    if args.colors:
+        required_keys = [
+            'line', 'point_edge', 'point_face', 'connector',
+            'label_bg', 'label_edge', 'slashes', 'title'
+        ]
+        missing_keys = [key for key in required_keys if key not in args.colors]
+        if missing_keys:
+            print(f"Error: Missing required color keys: {missing_keys}", file=sys.stderr)
+            return 1
+        try:
+            color_scheme = create_color_scheme(
+                base_color=args.colors.get('line'),
+                accent_color=args.colors.get('point_face')
+            )
+        except ValueError as e:
+            print(f"Error: Invalid color scheme: {e}", file=sys.stderr)
+            return 1
+
+    output_file = None
+    if args.output_dir:
+        os.makedirs(args.output_dir, exist_ok=True)
+        output_file = os.path.join(args.output_dir, 'event_log_timeline.png')
+
+    try:
+        fig, _axs = plot_event_log_timeline(
+            data=args.csv_file,
+            timestamp_column=args.log_time_column,
+            label_column=args.log_label_column,
+            filter_column=args.log_filter_column,
+            include_values=args.log_include,
+            exclude_values=args.log_exclude,
+            threshold_days=args.threshold_days,
+            figsize=figsize,
+            point_size=args.point_size,
+            color_scheme=color_scheme,
+            show_plot=not args.no_show,
+            dpi=args.dpi,
+            output_file=output_file,
+        )
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"Error generating event log timeline: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        return 1
+
+    if fig is None:
+        print("No event log timeline was generated. Check filters and timestamps.",
+              file=sys.stderr)
+        return 1
+
+    if output_file:
+        print(f"Saved event log timeline to {output_file}")
+    print("Successfully generated event log timeline.")
+    return 0
+
 
 def _run_promtest(args):
     """Handle --promtest mode."""
