@@ -1,0 +1,46 @@
+# Several eval + alert checkpoints on one series — stress-test stacked callouts (readable layout).
+#
+#   timelineviz examples/promtest_label_multi.yml --promtest --no-show -o images/_multi \
+#     --promtest-label-layout readable
+#   cp images/_multi/promtest.png images/promtest_label_multi.png
+
+evaluation_interval: 1m
+tests:
+  - name: multi_checkpoints
+    interval: 1m
+    input_series:
+      - series: 'requests_total'
+        values: '0+10x14'
+    promql_expr_test:
+      - expr: requests_total > 20
+        eval_time: 2m
+        exp_samples:
+          - labels: 'requests_total'
+            value: 20
+      - expr: requests_total > 50
+        eval_time: 5m
+        exp_samples:
+          - labels: 'requests_total'
+            value: 50
+      - expr: requests_total > 80
+        eval_time: 8m
+        exp_samples:
+          - labels: 'requests_total'
+            value: 80
+      - expr: requests_total > 100
+        eval_time: 11m
+        exp_samples:
+          - labels: 'requests_total'
+            value: 100
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: Warn
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: Warn
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+      - eval_time: 12m
+        alertname: HighTraffic
+        exp_alerts: []

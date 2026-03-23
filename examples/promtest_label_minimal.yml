@@ -1,0 +1,22 @@
+# Two checkpoints only (one PromQL eval + one alert) — good for checking callout layout.
+#
+#   timelineviz examples/promtest_label_minimal.yml --promtest --no-show -o images/_minimal \
+#     --promtest-label-layout readable
+
+evaluation_interval: 1m
+tests:
+  - name: two_checkpoints
+    interval: 1m
+    input_series:
+      - series: 'requests_total'
+        values: '0+10x14'
+    promql_expr_test:
+      - expr: requests_total > 50
+        eval_time: 5m
+        exp_samples:
+          - labels: 'requests_total'
+            value: 50
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: HighTraffic
+        exp_alerts: []

@@ -33,19 +33,59 @@ timelineviz examples/promtest_time_breaks.yml --promtest --promtest-break-gap 40
 
 Anchors for breaks are **`0`**, the **end of the series timeline**, and **every** `eval_time` / alert `eval_time`. If the gap between two consecutive anchors (in minutes) is greater than `--promtest-break-gap`, the figure uses **multiple horizontal panels** with slash markers between them, similar to wide-format CSV timelines and `threshold_days`.
 
+Within each column, subplots **share the same x scale** and use the **same duration tick formatter**; only the **bottom** row shows x tick labels so upper panels stay uncluttered. X-axis ticks are **not placed at negative minutes** (padding can extend the axis left of 0, but labels stay at `0s`, `1m`, …).
+
 ### Label overlap (`--promtest-label-layout`)
 
 Dense tests often stack eval lines, value callouts, and alert text in the same region. Use:
 
 | Value | Behaviour |
 |-------|-----------|
-| **`readable`** (default) | Stagger eval/alert boxes in rows above the first series; thin value labels along steps with a minimum horizontal gap and alternating above/below; stack alert annotations when they share the same time. |
-| **`compact`** | Stronger truncation and fewer step value labels (larger minimum gap, smaller fonts). |
+| **`readable`** (default) | **Interval packing** for eval/alert callouts: each label gets a row track so estimated label widths on the time axis do not overlap; checkpoints that are far apart horizontally can **share a row** (greedy track assignment). A **vertical stroke** sits flush on the outer **left** or **right** edge of each callout box (leading vs trailing); glyphs are padded inward so they do not touch the bar. Boxes use `ha=left` / `ha=right` with the anchor at the checkpoint time. Step value labels use a minimum horizontal gap and alternate above/below; alert annotations stack when they share the same time. |
+| **`compact`** | Same packing as readable with **shorter text and smaller fonts**; fewer step value labels (larger minimum gap). |
 | **`legacy`** | Original placement (matches older releases). |
 
 ```bash
 timelineviz my_test.yml --promtest --promtest-label-layout compact --no-show
 ```
+
+To compare layouts on the same fixture, use `examples/promtest_label_demo.yml` (several eval and alert times in a short window):
+
+```bash
+for layout in readable legacy compact; do
+  timelineviz examples/promtest_label_demo.yml --promtest --no-show -o "images/_tmp_$layout" \
+    --promtest-label-layout "$layout"
+  cp "images/_tmp_$layout/promtest.png" "images/promtest_label_${layout}.png"
+done
+rm -rf images/_tmp_*
+```
+
+For a **minimal** chart with only two checkpoints (one expression eval and one alert), use `examples/promtest_label_minimal.yml`:
+
+```bash
+timelineviz examples/promtest_label_minimal.yml --promtest --no-show -o images/_minimal \
+  --promtest-label-layout readable
+```
+
+For **several** mixed eval/alert times on one series (stacking stress test without the full dense demo), use `examples/promtest_label_multi.yml`:
+
+```bash
+timelineviz examples/promtest_label_multi.yml --promtest --no-show -o images/_multi \
+  --promtest-label-layout readable
+```
+
+Checked-in screenshots (default **`readable`** layout) under `images/`:
+
+| Fixture | File |
+|--------|------|
+| Multi (stacking stress) | [`images/promtest_label_multi.png`](images/promtest_label_multi.png) |
+| Dense demo | [`images/promtest_label_readable.png`](images/promtest_label_readable.png) |
+
+![Multi: interval-packed callouts](images/promtest_label_multi.png)
+
+![Dense demo: readable layout](images/promtest_label_readable.png)
+
+Use the `for layout in …` loop above to render **`legacy`** or **`compact`** locally; other fixtures (e.g. `promtest_label_minimal.yml`) are documented by command only—save with `--output-dir` / `-o` if you want PNGs.
 
 ### Python API
 
@@ -183,9 +223,7 @@ groups = parse_promtest_file("rules_test.yml")
 plot_promtest(groups, title="InstanceDown Alert Test")
 ```
 
-This produces:
-
-![InstanceDown Alert Test](images/promtest_example_1.png)
+Run `plot_promtest(..., output_file="instance_down.png")` (or `python examples/gen_charts.py`, which writes `images/promtest_example_1.png`) to generate a figure from this YAML.
 
 **Reading the chart:**
 
@@ -220,7 +258,7 @@ tests:
             value: 2
 ```
 
-![Multi-Series with Gaps & Stale](images/promtest_example_2.png)
+Run `python examples/gen_charts.py` to write `images/promtest_example_2.png`, or call `plot_promtest` with the parsed YAML and `output_file=`.
 
 **Things to notice:**
 
