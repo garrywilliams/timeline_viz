@@ -53,6 +53,39 @@ def test_parse_args_numeric_options():
     assert args.point_size == 12
     assert args.dpi == 300
 
+
+def test_parse_args_event_log_requires_time_column():
+    with pytest.raises(SystemExit):
+        parse_args(['data.csv', '--event-log'])
+
+
+def test_parse_args_event_log_conflicts_with_promtest():
+    with pytest.raises(SystemExit):
+        parse_args([
+            'data.csv',
+            '--event-log',
+            '--log-time-column', 'ts',
+            '--promtest',
+        ])
+
+
+def test_parse_args_event_log_ok():
+    args = parse_args([
+        'log.csv',
+        '--event-log',
+        '--log-time-column', 'ts',
+        '--log-label-column', 'msg',
+        '--log-filter-column', 'level',
+        '--log-include', 'ERROR', 'WARN',
+        '--log-exclude', 'DEBUG',
+    ])
+    assert args.event_log is True
+    assert args.log_time_column == 'ts'
+    assert args.log_label_column == 'msg'
+    assert args.log_filter_column == 'level'
+    assert args.log_include == ['ERROR', 'WARN']
+    assert args.log_exclude == ['DEBUG']
+
 def test_main_basic_functionality(tmp_path):
     # Create a test CSV file
     csv_path = tmp_path / "test.csv"
@@ -514,4 +547,93 @@ def test_main_figure_size_parsing():
     # Test with invalid figure size format
     with pytest.raises(SystemExit) as exc_info:
         main(['data.csv', '--figsize', 'invalid'])
-    assert exc_info.value.code == 2 
+    assert exc_info.value.code == 2
+
+
+def test_main_event_log_mode(tmp_path):
+    csv_path = tmp_path / 'incident.csv'
+    csv_path.write_text(
+        'ts,level,message\n'
+        '2024-06-01 10:00:00,INFO,started\n'
+        '2024-06-01 10:01:00,ERROR,failed\n'
+        '2024-06-01 10:02:00,WARN,retry\n'
+    )
+    out = tmp_path / 'out'
+    result = main([
+        str(csv_path),
+        '--event-log',
+        '--log-time-column', 'ts',
+        '--log-label-column', 'message',
+        '--log-filter-column', 'level',
+        '--log-include', 'ERROR', 'WARN',
+        '--output-dir', str(out),
+        '--no-show',
+    ])
+    assert result == 0
+    assert (out / 'event_log_timeline.png').is_file()
+
+
+def test_main_event_log_no_matching_rows(tmp_path):
+    csv_path = tmp_path / 'log.csv'
+    csv_path.write_text('ts,level\n2024-01-01 10:00:00,INFO\n')
+    result = main([
+        str(csv_path),
+        '--event-log',
+        '--log-time-column', 'ts',
+        '--log-filter-column', 'level',
+        '--log-include', 'ERROR',
+        '--no-show',
+    ])
+    assert result == 1
+
+
+def test_main_event_log_invalid_filter_column(tmp_path):
+    csv_path = tmp_path / 'log.csv'
+    csv_path.write_text('ts,level\n2024-01-01 10:00:00,INFO\n')
+    result = main([
+        str(csv_path),
+        '--event-log',
+        '--log-time-column', 'ts',
+        '--log-filter-column', 'missing',
+        '--log-include', 'INFO',
+        '--no-show',
+    ])
+    assert result == 1
+
+
+def test_main_event_log_invalid_timestamps(tmp_path):
+    csv_path = tmp_path / 'log.csv'
+    csv_path.write_text('ts,msg\nnot-a-date,hello\nalso-bad,world\n')
+    result = main([
+        str(csv_path),
+        '--event-log',
+        '--log-time-column', 'ts',
+        '--log-label-column', 'msg',
+        '--no-show',
+    ])
+    assert result == 1
+
+
+def test_main_event_log_incomplete_colors(tmp_path):
+    csv_path = tmp_path / 'log.csv'
+    csv_path.write_text('ts\n2024-01-01 10:00:00\n')
+    result = main([
+        str(csv_path),
+        '--event-log',
+        '--log-time-column', 'ts',
+        '--colors', '{"line":"#0046be"}',
+        '--no-show',
+    ])
+    assert result == 1
+
+
+def test_main_event_log_success_without_output_dir(tmp_path):
+    csv_path = tmp_path / 'log.csv'
+    csv_path.write_text('ts\n2024-01-01 10:00:00\n')
+    result = main([
+        str(csv_path),
+        '--event-log',
+        '--log-time-column', 'ts',
+        '--no-show',
+    ])
+    assert result == 0

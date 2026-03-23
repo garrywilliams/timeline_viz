@@ -120,6 +120,144 @@ def format_timestamp(dt):
     """
     return dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]  # truncate to milliseconds
 
+
+def _plot_sorted_events(
+    timestamps,
+    labels,
+    *,
+    entity_id=None,
+    threshold_days=30,
+    figsize=(15, 5),
+    point_size=8,
+    date_rotation=45,
+    color_scheme=None,
+    title=None,
+    title_default_prefix='Timeline',
+    show_plot=True,
+    output_file=None,
+    dpi=150,
+):
+    """Render a timeline from chronologically sorted timestamps and per-point labels."""
+    if color_scheme is None:
+        color_scheme = DEFAULT_COLOR_SCHEME
+
+    if not timestamps or not labels or len(timestamps) != len(labels):
+        print("No valid events to plot")
+        return None, None
+
+    dates_num = mdates.date2num(timestamps)
+    clusters, cluster_indices = find_clusters(dates_num, threshold_days)
+    n_clusters = len(clusters)
+
+    if n_clusters == 0:
+        print(f"No valid clusters to plot for entity {entity_id}")
+        return None, None
+
+    fig, axs = plt.subplots(
+        1, n_clusters, figsize=figsize,
+        gridspec_kw={'width_ratios': [len(c) for c in clusters]},
+    )
+    if n_clusters == 1:
+        axs = [axs]
+
+    plt.subplots_adjust(wspace=0.1)
+
+    for ax, cluster, indices in zip(axs, clusters, cluster_indices):
+        time_range = max(cluster) - min(cluster)
+        padding = time_range * 0.15 if len(cluster) > 1 else 0.1
+        ax.set_xlim(min(cluster) - padding, max(cluster) + padding)
+        ax.axhline(y=0, color=color_scheme['line'], linewidth=2.0, zorder=1)
+        ax.plot(
+            cluster, np.zeros_like(cluster), 'o',
+            color=color_scheme['point_edge'], markersize=point_size,
+            markerfacecolor=color_scheme['point_face'],
+            markeredgewidth=1.5, zorder=3,
+        )
+
+        for j, (date_num, idx) in enumerate(zip(cluster, indices)):
+            date = mdates.num2date(date_num)
+            col_label = labels[idx]
+            time_label = format_timestamp(date)
+            label = f"{col_label}\n{time_label}"
+            y_offset = 0.4 if j % 2 == 0 else -0.4
+            text_y = y_offset * 2
+            ax.plot(
+                [date_num, date_num], [0, text_y], '-',
+                color=color_scheme['connector'], linewidth=1.2, alpha=0.8, zorder=2,
+            )
+            bbox_props = dict(
+                boxstyle="round,pad=0.5",
+                fc=color_scheme['label_bg'],
+                ec=color_scheme['label_edge'],
+                alpha=0.9,
+            )
+            ax.annotate(
+                label,
+                xy=(date_num, text_y),
+                xytext=(0, 5 if y_offset > 0 else -5),
+                textcoords='offset points',
+                ha='center',
+                va='bottom' if y_offset > 0 else 'top',
+                bbox=bbox_props,
+                fontsize=9,
+            )
+
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
+        ax.set_xticks([min(cluster), max(cluster)])
+        ax.spines['bottom'].set_position(('data', 0))
+        plt.setp(ax.xaxis.get_majorticklabels(), rotation=date_rotation, ha='right')
+        ax.set_ylim(-1.2, 1.2)
+        ax.set_yticks([])
+        ax.spines['left'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+
+    plt.tight_layout()
+
+    for i in range(n_clusters - 1):
+        right_pos = axs[i].get_position().x1
+        left_pos = axs[i + 1].get_position().x0
+        mid_pos = (right_pos + left_pos) / 2
+        y_center = 0.5
+        slash_height = 0.05
+        slash_gap = 0.015
+        for offset in [-slash_gap / 2, slash_gap / 2]:
+            x_mid = mid_pos + offset
+            slash = plt.Line2D(
+                [x_mid - slash_height / 6, x_mid + slash_height / 6],
+                [y_center - slash_height / 2, y_center + slash_height / 2],
+                transform=fig.transFigure,
+                color=color_scheme['slashes'],
+                linewidth=2.5,
+                solid_capstyle='round',
+                clip_on=False,
+                zorder=10,
+            )
+            fig.add_artist(slash)
+
+    if title is None:
+        title = title_default_prefix
+        if entity_id:
+            title += f' - Entity {entity_id}'
+
+    plt.suptitle(
+        title, fontsize=16, fontweight='bold', x=0.02, ha='left',
+        color=color_scheme.get('title', '#0046be'),
+    )
+
+    if output_file:
+        fig.savefig(output_file, bbox_inches='tight', dpi=dpi)
+        print(f"Saved timeline to {output_file}")
+
+    if show_plot:
+        if plt.get_backend().lower() in ['tkagg', 'qt5agg', 'macosx', 'wx', 'gtk3agg']:
+            plt.show()
+    else:
+        plt.close(fig)
+
+    return fig, axs
+
+
 def plot_timeline(data, timestamp_columns=None, entity_id=None, 
                 threshold_days=30, figsize=(15, 5), point_size=8, date_rotation=45, 
                 color_scheme=None, title=None, label_mappings=None,
@@ -216,144 +354,141 @@ def plot_timeline(data, timestamp_columns=None, entity_id=None,
     sorted_indices = np.argsort(timestamps)
     timestamps = [timestamps[i] for i in sorted_indices]
     labels = [labels[i] for i in sorted_indices]
-    
-    # Convert timestamps to matplotlib date numbers
-    dates_num = mdates.date2num(timestamps)
-    
-    # Find clusters
-    clusters, cluster_indices = find_clusters(dates_num, threshold_days)
-    n_clusters = len(clusters)
-    
-    if n_clusters == 0:
-        print(f"No valid clusters to plot for entity {entity_id}")
-        return None, None
-    
-    # Create figure with wider spacing between subplots
-    fig, axs = plt.subplots(1, n_clusters, figsize=figsize, 
-                           gridspec_kw={'width_ratios': [len(c) for c in clusters]})
-    if n_clusters == 1:
-        axs = [axs]
-    
-    plt.subplots_adjust(wspace=0.1)  # Adjust spacing between subplots
-    
-    # Plot each cluster
-    for i, (ax, cluster, indices) in enumerate(zip(axs, clusters, cluster_indices)):
-        # Calculate padding for x limits
-        time_range = max(cluster) - min(cluster)
-        padding = time_range * 0.15 if len(cluster) > 1 else 0.1
-        
-        # Set x limits with padding
-        ax.set_xlim(min(cluster) - padding, max(cluster) + padding)
-        
-        # Plot central timeline with brand color
-        ax.axhline(y=0, color=color_scheme['line'], linewidth=2.0, zorder=1)
-        
-        # Plot points with brand colors
-        ax.plot(cluster, np.zeros_like(cluster), 'o', 
-                color=color_scheme['point_edge'], markersize=point_size, 
-                markerfacecolor=color_scheme['point_face'], 
-                markeredgewidth=1.5, zorder=3)
-        
-        # Add labels with alternating heights and connecting lines
-        for j, (date_num, idx) in enumerate(zip(cluster, indices)):
-            date = mdates.num2date(date_num)
-            col_label = labels[idx]
-            time_label = format_timestamp(date)
-            label = f"{col_label}\n{time_label}"
-            
-            y_offset = 0.4 if j % 2 == 0 else -0.4
-            text_y = y_offset * 2
-            
-            # Add connecting line
-            ax.plot([date_num, date_num], [0, text_y], '-', 
-                   color=color_scheme['connector'], linewidth=1.2, alpha=0.8, zorder=2)
-            
-            # Add text label with background
-            bbox_props = dict(
-                boxstyle="round,pad=0.5",
-                fc=color_scheme['label_bg'],
-                ec=color_scheme['label_edge'],
-                alpha=0.9
-            )
-            
-            ax.annotate(label, 
-                       xy=(date_num, text_y),
-                       xytext=(0, 5 if y_offset > 0 else -5),
-                       textcoords='offset points',
-                       ha='center',
-                       va='bottom' if y_offset > 0 else 'top',
-                       bbox=bbox_props,
-                       fontsize=9)
-        
-        # Format x-axis to show time
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
-        ax.set_xticks([min(cluster), max(cluster)])
-        
-        ax.spines['bottom'].set_position(('data', 0))
-        plt.setp(ax.xaxis.get_majorticklabels(), rotation=date_rotation, ha='right')
-        
-        ax.set_ylim(-1.2, 1.2)
-        ax.set_yticks([])
-        
-        # Remove spines
-        ax.spines['left'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        ax.spines['top'].set_visible(False)
-    
-    # Draw break markers directly on the figure after tight_layout is applied
-    plt.tight_layout()
-    
-    # Add custom break markers between subplots
-    for i in range(n_clusters - 1):
-        # Get positions of adjacent subplots
-        right_pos = axs[i].get_position().x1
-        left_pos = axs[i+1].get_position().x0
-        mid_pos = (right_pos + left_pos) / 2
-        
-        # Parameters for slash positioning
-        y_center = 0.5  # Center point in y-direction (figure coordinates)
-        slash_height = 0.05  # Height of slash in figure coordinates
-        slash_gap = 0.015  # Gap between slashes
-        
-        # Draw two parallel slashes for each break - with steeper angle
-        for offset in [-slash_gap/2, slash_gap/2]:
-            x_mid = mid_pos + offset
-            
-            # Draw the slash with steeper angle
-            slash = plt.Line2D(
-                [x_mid - slash_height/6, x_mid + slash_height/6],  # x-coords - narrower for steeper angle
-                [y_center - slash_height/2, y_center + slash_height/2],  # y-coords
-                transform=fig.transFigure,
-                color=color_scheme['slashes'],
-                linewidth=2.5,
-                solid_capstyle='round',
-                clip_on=False,
-                zorder=10
-            )
-            fig.add_artist(slash)
-    
-    # Add title
-    if title is None:
-        title = 'Timeline'
-        if entity_id:
-            title += f' - Entity {entity_id}'
-    
-    plt.suptitle(title, fontsize=16, fontweight='bold', x=0.02, ha='left', 
-                color=color_scheme.get('title', '#0046be'))
-    
-    # Save or show the figure
-    if output_file:
-        fig.savefig(output_file, bbox_inches='tight', dpi=dpi)
-        print(f"Saved timeline to {output_file}")
-    
-    if show_plot:
-        # Only try to show if using an interactive backend
-        if plt.get_backend().lower() in ['tkagg', 'qt5agg', 'macosx', 'wx', 'gtk3agg']:
-            plt.show()
+
+    return _plot_sorted_events(
+        timestamps,
+        labels,
+        entity_id=entity_id,
+        threshold_days=threshold_days,
+        figsize=figsize,
+        point_size=point_size,
+        date_rotation=date_rotation,
+        color_scheme=color_scheme,
+        title=title,
+        title_default_prefix='Timeline',
+        show_plot=show_plot,
+        output_file=output_file,
+        dpi=dpi,
+    )
+
+
+def plot_event_log_timeline(
+    data,
+    timestamp_column,
+    label_column=None,
+    filter_column=None,
+    include_values=None,
+    exclude_values=None,
+    entity_id=None,
+    threshold_days=30,
+    figsize=(15, 5),
+    point_size=8,
+    date_rotation=45,
+    color_scheme=None,
+    title=None,
+    show_plot=True,
+    output_file=None,
+    dpi=150,
+):
+    """
+    Plot a timeline from long-format (log-style) data: one timestamp column, many rows.
+
+    Each row becomes one point on the timeline. Use ``filter_column`` with
+    ``include_values`` / ``exclude_values`` to drop noise (for example only
+    ``ERROR`` and ``WARN`` lines, or exclude ``DEBUG``).
+
+    Parameters
+    ----------
+    data : str or pandas.DataFrame
+        CSV path or DataFrame.
+    timestamp_column : str
+        Column containing event times.
+    label_column : str, optional
+        Column whose values are shown as event labels. If omitted, labels are
+        ``Event 1``, ``Event 2``, … in time order.
+    filter_column : str, optional
+        Column used with ``include_values`` / ``exclude_values`` (e.g. ``level``,
+        ``event_type``). Required if either filter list is provided.
+    include_values : list, optional
+        Keep only rows where ``filter_column`` is in this list.
+    exclude_values : list, optional
+        Drop rows where ``filter_column`` is in this list.
+    entity_id : str, optional
+        Shown in the default title after "Event log - Entity …".
+    threshold_days, figsize, point_size, date_rotation, color_scheme, title,
+    show_plot, output_file, dpi
+        Same as :func:`plot_timeline`.
+
+    Returns
+    -------
+    fig, axs
+        Same as :func:`plot_timeline`.
+    """
+    if isinstance(data, str):
+        df = pd.read_csv(data)
+    elif isinstance(data, pd.DataFrame):
+        df = data
     else:
-        plt.close(fig)
-    
-    return fig, axs
+        raise ValueError(f"data must be a DataFrame or path to CSV, not {type(data)}")
+
+    if timestamp_column not in df.columns:
+        raise ValueError(f"timestamp_column {timestamp_column!r} not found in columns")
+
+    if label_column is not None and label_column not in df.columns:
+        raise ValueError(f"label_column {label_column!r} not found in columns")
+
+    working = df.copy()
+
+    if filter_column is not None and filter_column not in working.columns:
+        raise ValueError(f"filter_column {filter_column!r} not found in columns")
+
+    if include_values is not None:
+        if filter_column is None:
+            raise ValueError("filter_column is required when include_values is set")
+        working = working[working[filter_column].isin(include_values)]
+
+    if exclude_values is not None:
+        if filter_column is None:
+            raise ValueError("filter_column is required when exclude_values is set")
+        working = working[~working[filter_column].isin(exclude_values)]
+
+    if working.empty:
+        print("No rows left after filtering")
+        return None, None
+
+    ts = parse_timestamps(working, timestamp_column, normalize_tz=True, errors='coerce')
+    working = working.assign(_event_ts=ts)
+    working = working[working['_event_ts'].notna()].sort_values('_event_ts')
+
+    if working.empty:
+        print("No valid timestamps after parsing")
+        return None, None
+
+    timestamps = working['_event_ts'].tolist()
+    if label_column is not None:
+        labels = working[label_column].astype(str).tolist()
+    else:
+        labels = [f"Event {i + 1}" for i in range(len(working))]
+
+    if threshold_days <= 0:
+        raise ValueError("threshold_days must be positive")
+
+    return _plot_sorted_events(
+        timestamps,
+        labels,
+        entity_id=entity_id,
+        threshold_days=threshold_days,
+        figsize=figsize,
+        point_size=point_size,
+        date_rotation=date_rotation,
+        color_scheme=color_scheme,
+        title=title,
+        title_default_prefix='Event log',
+        show_plot=show_plot,
+        output_file=output_file,
+        dpi=dpi,
+    )
+
 
 def plot_multiple_timelines(data, timestamp_columns=None, id_column=None, 
                          detect_timestamps=False, output_dir=None, max_entities=None,

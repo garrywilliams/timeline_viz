@@ -11,6 +11,7 @@ Timeline visualisation for CSV data and Prometheus test files.
 ## Features
 
 - Plot event timelines from CSV / DataFrame timestamp data
+- **Long-format logs** — one timestamp column across many rows, with optional filters on level / event type (incident-style timelines)
 - Handle time gaps with broken timeline display
 - Auto-detect timestamp columns based on naming patterns
 - **Visualise Prometheus `promtool` unit-test files** — series values, eval checkpoints, and alert checks on a relative time axis
@@ -31,8 +32,11 @@ For development:
 ```bash
 git clone https://github.com/garrywilliams/timeline_viz.git
 cd timeline_viz
-uv pip install -e ".[dev]"
+make install
+# or: uv pip install -e ".[dev]"
 ```
+
+Run `make` or `make help` for tests, builds, and other tasks. Details: [DEVELOPING.md](DEVELOPING.md).
 
 ## Quick Start
 
@@ -64,6 +68,32 @@ plot_multiple_timelines("data.csv",
                         output_dir="timeline_images")
 ```
 
+### Event log (long format)
+
+Use this when each **row** is one event and times live in a **single column** (typical logs). Optionally keep or drop rows using another column (for example `level` or `event_type`) so you can focus on an incident and ignore noise.
+
+```bash
+timelineviz examples/incident_log.csv --event-log --log-time-column ts \
+  --log-label-column message --log-filter-column level \
+  --log-include ERROR WARN --output-dir timelines --no-show
+```
+
+```python
+from timelineviz import plot_event_log_timeline
+
+plot_event_log_timeline(
+    "incident.csv",
+    timestamp_column="ts",
+    label_column="message",
+    filter_column="level",
+    include_values=["ERROR", "WARN"],
+    output_file="incident_timeline.png",
+    show_plot=False,
+)
+```
+
+A small sample file is in [`examples/incident_log.csv`](examples/incident_log.csv).
+
 ### Prometheus Test Timelines
 
 Visualise `promtool` unit-test YAML files — see series values change over time, where evaluations happen, and when alerts fire.
@@ -90,7 +120,11 @@ Charts are self-documenting — each subplot shows the metric name and raw notat
 
 ### CSV Timelines
 
-Timestamps are plotted as labelled points along a horizontal axis. When time gaps exceed a threshold, the timeline is broken into segments with slash markers indicating the breaks.
+**Wide format** (default): each entity is a row; timestamps live in separate columns (for example `created_at`, `updated_at`). Those columns become labelled points on one timeline per entity.
+
+**Long format** (`plot_event_log_timeline` / `--event-log`): many rows share one timestamp column; each row is one point. Filters apply before plotting.
+
+In both cases, when time gaps exceed a threshold, the timeline is broken into segments with slash markers indicating the breaks.
 
 ### Promtest Timelines
 

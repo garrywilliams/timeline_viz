@@ -1,0 +1,11 @@
+ts,level,message
+2024-06-01 10:00:00.000,INFO,service starting
+2024-06-01 10:00:01.234,DEBUG,config loaded
+2024-06-01 10:00:05.100,INFO,connected to db
+2024-06-01 10:01:00.000,WARN,retry attempt 1
+2024-06-01 10:01:30.500,ERROR,upstream timeout
+2024-06-01 10:01:31.000,INFO,circuit opened
+2024-06-01 10:02:00.000,DEBUG,health check ok
+2024-06-01 10:05:00.000,ERROR,payment provider 503
+2024-06-01 10:05:15.250,WARN,queue depth high
+2024-06-01 10:06:00.000,INFO,incident acknowledged
