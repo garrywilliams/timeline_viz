@@ -20,6 +20,7 @@ The repository root includes a `Makefile` for routine tasks. It invokes **`uv`**
 | `version` | Print `timelineviz.__version__` |
 | `cli-help` | `timelineviz --help` |
 | `example-charts` | Regenerate documentation images (`examples/gen_charts.py`) |
+| `example-event-log` | Run CLI `--event-log` on `examples/incident_log.csv` (override `EVENT_LOG_CSV`, `EVENT_LOG_OUT`) → `event_log_timeline.png` |
 
 Override the test runner with `make PYTEST=pytest …` if required.
 
