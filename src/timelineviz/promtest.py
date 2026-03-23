@@ -373,6 +373,115 @@ def _indices_covering_x_window(xs: Sequence[float], x_lo: float, x_hi: float) ->
     return range(lo_i, hi_i + 1)
 
 
+def _promtest_label_layout_validate(layout: str) -> str:
+    allowed = ('readable', 'legacy', 'compact')
+    if layout not in allowed:
+        raise ValueError(f'label_layout must be one of {allowed}, not {layout!r}')
+    return layout
+
+
+def _annotate_transitions(
+    ax, xs, ys, color, *, label_layout: str = 'readable', min_x_gap: Optional[float] = None,
+):
+    """Value labels at step transitions; optional minimum x-gap to reduce overlap."""
+    layout = _promtest_label_layout_validate(label_layout)
+    prev_val = None
+    candidates = []
+    for i, (x, y) in enumerate(zip(xs, ys)):
+        show = False
+        if i == 0:
+            show = True
+        elif y != prev_val:
+            show = True
+        elif i == len(xs) - 1:
+            show = True
+        if show:
+            candidates.append((x, y, i == 0, i == len(xs) - 1))
+        prev_val = y
+
+    if layout == 'legacy' or not candidates:
+        final = [(c[0], c[1]) for c in candidates]
+    else:
+        if min_x_gap is None:
+            min_x_gap = 1e-6
+        final = []
+        last_x = -1e30
+        for x, y, is_first, is_last in sorted(candidates, key=lambda t: t[0]):
+            if is_first or is_last:
+                final.append((x, y))
+                last_x = x
+            elif x - last_x >= min_x_gap:
+                final.append((x, y))
+                last_x = x
+
+    fs = 6 if layout == 'compact' else 7
+    for k, (x, y) in enumerate(final):
+        if layout == 'legacy':
+            xytext, va = (0, 8), 'bottom'
+        else:
+            if k % 2 == 0:
+                xytext, va = (0, 10), 'bottom'
+            else:
+                xytext, va = (0, -14), 'top'
+        if y == int(y):
+            val_str = str(int(y))
+        else:
+            val_str = f'{y:.2g}'
+        ax.annotate(
+            val_str, (x, y),
+            textcoords='offset points', xytext=xytext,
+            ha='center', va=va, fontsize=fs,
+            color=color, fontweight='bold', alpha=0.85,
+        )
+
+
+def _annotate_eval_lines(ax, annotations, cs, *, label_layout: str = 'readable'):
+    """Labels for eval/alert vertical lines; stagger when layout is not legacy."""
+    layout = _promtest_label_layout_validate(label_layout)
+    ann_sorted = sorted(annotations, key=lambda t: t[0])
+    max_chars = 28 if layout == 'compact' else 40
+    fontsize = 6 if layout == 'compact' else 7
+
+    for i, (et, label, kind) in enumerate(ann_sorted):
+        if kind == 'eval':
+            text = f'eval: {label}'
+            colour = cs['eval_line']
+        else:
+            text = f'alert: {label}'
+            colour = cs['alert_firing']
+
+        if len(text) > max_chars:
+            text = text[: max_chars - 3] + '...'
+
+        time_str = _format_duration_short(timedelta(minutes=et))
+        text = f'{text}\n@ {time_str}'
+
+        if layout == 'legacy':
+            ax.annotate(
+                text, (et, 1.0),
+                xycoords=('data', 'axes fraction'),
+                textcoords='offset points', xytext=(4, -4),
+                ha='left', va='top', fontsize=fontsize, color=colour,
+                fontweight='bold', alpha=0.9,
+                bbox=dict(boxstyle='round,pad=0.25', fc='white',
+                          ec=colour, alpha=0.85, linewidth=0.7),
+            )
+        else:
+            row = i % 6
+            y_frac = 1.0 + row * 0.036
+            ha = 'left' if i % 2 == 0 else 'right'
+            off_x = 8 if ha == 'left' else -8
+            ax.annotate(
+                text, (et, y_frac),
+                xycoords=('data', 'axes fraction'),
+                textcoords='offset points', xytext=(off_x, -2 - row),
+                ha=ha, va='bottom', fontsize=fontsize, color=colour,
+                fontweight='bold', alpha=0.9,
+                bbox=dict(boxstyle='round,pad=0.25', fc='white',
+                          ec=colour, alpha=0.85, linewidth=0.7),
+            )
+
+
 def _add_promtest_column_slashes(fig, bottom_axes_row, slash_color: str) -> None:
     """Draw slash markers between adjacent column axes (figure coordinates)."""
     n = len(bottom_axes_row)
@@ -431,6 +540,7 @@ def _draw_promtest_time_column(
     eval_annotations: list,
     interval_min: float,
     set_xlabel: bool,
+    label_layout: str = 'readable',
 ) -> None:
     """Draw one horizontal time segment (column) of a promtest figure."""
     n_series = len(group.series)
@@ -508,20 +618,35 @@ def _draw_promtest_time_column(
                      loc='left', fontstyle='italic', pad=4)
 
         if xs_s and ys_s:
-            _annotate_transitions(ax, xs_s, ys_s, color)
+            x0, x1 = ax.get_xlim()
+            span = max(x1 - x0, 1e-9)
+            if label_layout == 'legacy':
+                mgap = 0.0
+            else:
+                mgap = max(span * 0.035, interval_min * 1.2)
+                if label_layout == 'compact':
+                    mgap *= 1.65
+            _annotate_transitions(
+                ax, xs_s, ys_s, color, label_layout=label_layout, min_x_gap=mgap,
+            )
 
     if ann_in and n_series > 0:
-        _annotate_eval_lines(column_axes[0], ann_in, cs)
+        _annotate_eval_lines(column_axes[0], ann_in, cs, label_layout=label_layout)
 
     if has_alerts:
         ax_alert = column_axes[-1]
         alert_names = list({ac.alertname for ac in group.alert_checks})
         alert_y = {name: i for i, name in enumerate(alert_names)}
 
-        for ac in group.alert_checks:
+        alert_draw_order = sorted(
+            [ac for ac in group.alert_checks
+             if x_lo - 1e-9 <= _td_to_minutes(ac.eval_time) <= x_hi + 1e-9],
+            key=lambda a: (_td_to_minutes(a.eval_time), alert_y[a.alertname]),
+        )
+        stack_key_counts = {}
+
+        for ac in alert_draw_order:
             et = _td_to_minutes(ac.eval_time)
-            if not (x_lo - 1e-9 <= et <= x_hi + 1e-9):
-                continue
             y = alert_y[ac.alertname]
             is_firing = bool(ac.exp_alerts)
             color = cs['alert_firing'] if is_firing else cs['alert_pending']
@@ -532,10 +657,23 @@ def _draw_promtest_time_column(
             label_full = (
                 f'{ac.alertname} @ {_format_duration_short(ac.eval_time)} — {label_text}'
             )
+            if label_layout == 'legacy':
+                dy = 0
+                ha, off_x = 'left', 8
+            else:
+                sk = (round(et, 5), y)
+                stack_key_counts[sk] = stack_key_counts.get(sk, 0) + 1
+                k = stack_key_counts[sk] - 1
+                dy = k * 12
+                ha = 'left' if k % 2 == 0 else 'right'
+                off_x = 10 if ha == 'left' else -10
+            fs = 7 if label_layout != 'compact' else 6
+            if label_layout == 'compact' and len(label_full) > 42:
+                label_full = label_full[:39] + '...'
             ax_alert.annotate(
                 label_full, (et, y),
-                textcoords='offset points', xytext=(8, 0),
-                ha='left', va='center', fontsize=8, color=color,
+                textcoords='offset points', xytext=(off_x, dy),
+                ha=ha, va='center', fontsize=fs, color=color,
                 fontweight='bold',
                 bbox=dict(boxstyle='round,pad=0.3', fc='white',
                           ec=color, alpha=0.85, linewidth=0.8),
@@ -588,7 +726,7 @@ def _draw_promtest_time_column(
 
 def plot_promtest(groups, figsize=None, show_plot=True, output_file=None,
                   dpi=150, title=None, color_scheme=None,
-                  break_gap_minutes=None):
+                  break_gap_minutes=None, label_layout='readable'):
     """Visualise parsed promtool test groups.
 
     Parameters
@@ -613,6 +751,11 @@ def plot_promtest(groups, figsize=None, show_plot=True, output_file=None,
         Anchors are ``0``, ``x_max``, and every eval / alert time. Matches the
         spirit of CSV ``threshold_days`` breaks. If ``None`` (default), one
         continuous x-axis (original behaviour).
+    label_layout : str, default ``'readable'``
+        How to place eval/alert callouts and step value labels to limit overlap:
+        ``'readable'`` (staggered rows, spaced value labels, stacked alert text),
+        ``'compact'`` (stronger truncation and fewer value labels), or
+        ``'legacy'`` (original placement).
 
     Returns
     -------
@@ -622,6 +765,7 @@ def plot_promtest(groups, figsize=None, show_plot=True, output_file=None,
     """
     if break_gap_minutes is not None and break_gap_minutes <= 0:
         raise ValueError('break_gap_minutes must be positive when set')
+    _promtest_label_layout_validate(label_layout)
 
     cs = {**PROMTEST_COLOR_SCHEME, **(color_scheme or {})}
     results = []
@@ -685,6 +829,7 @@ def plot_promtest(groups, figsize=None, show_plot=True, output_file=None,
             _draw_promtest_time_column(
                 col_axes, group, windows[0][0], windows[0][1], x_max,
                 cs, eval_annotations, interval_min, set_xlabel=True,
+                label_layout=label_layout,
             )
             flat_axes = col_axes
             bottom_row_for_slash = [col_axes[-1]]
@@ -709,6 +854,7 @@ def plot_promtest(groups, figsize=None, show_plot=True, output_file=None,
                     col_axes, group, x_lo, x_hi, x_max,
                     cs, eval_annotations, interval_min,
                     set_xlabel=(j == n_cols - 1),
+                    label_layout=label_layout,
                 )
                 bottom_row_for_slash.append(col_axes[-1])
             for i in range(n_rows):
@@ -731,7 +877,10 @@ def plot_promtest(groups, figsize=None, show_plot=True, output_file=None,
                         bool(any(s.values and None in s.values for s in group.series)),
                         bool(any(s.values and 'stale' in s.values for s in group.series)))
 
-        fig.subplots_adjust(hspace=0.45, top=0.93, bottom=0.13)
+        top_margin = (
+            0.88 if label_layout != 'legacy' and eval_annotations else 0.93
+        )
+        fig.subplots_adjust(hspace=0.45, top=top_margin, bottom=0.13)
 
         if n_cols > 1:
             fig.canvas.draw()
@@ -751,59 +900,6 @@ def plot_promtest(groups, figsize=None, show_plot=True, output_file=None,
         results.append((fig, flat_axes))
 
     return results
-
-
-def _annotate_transitions(ax, xs, ys, color):
-    """Add small value labels at points where the value changes."""
-    prev_val = None
-    for i, (x, y) in enumerate(zip(xs, ys)):
-        show = False
-        if i == 0:
-            show = True
-        elif y != prev_val:
-            show = True
-        elif i == len(xs) - 1:
-            show = True
-
-        if show:
-            if y == int(y):
-                val_str = str(int(y))
-            else:
-                val_str = f'{y:.2g}'
-            ax.annotate(
-                val_str, (x, y),
-                textcoords='offset points', xytext=(0, 8),
-                ha='center', va='bottom', fontsize=7,
-                color=color, fontweight='bold', alpha=0.85,
-            )
-        prev_val = y
-
-
-def _annotate_eval_lines(ax, annotations, cs):
-    """Add rotated labels at the top of the subplot for eval/alert vertical lines."""
-    for et, label, kind in annotations:
-        if kind == 'eval':
-            text = f'eval: {label}'
-            colour = cs['eval_line']
-        else:
-            text = f'alert: {label}'
-            colour = cs['alert_firing']
-
-        if len(text) > 40:
-            text = text[:37] + '...'
-
-        time_str = _format_duration_short(timedelta(minutes=et))
-        text = f'{text}\n@ {time_str}'
-
-        ax.annotate(
-            text, (et, 1.0),
-            xycoords=('data', 'axes fraction'),
-            textcoords='offset points', xytext=(4, -4),
-            ha='left', va='top', fontsize=7, color=colour,
-            fontweight='bold', alpha=0.9,
-            bbox=dict(boxstyle='round,pad=0.25', fc='white',
-                      ec=colour, alpha=0.85, linewidth=0.7),
-        )
 
 
 def _add_legend_key(fig, cs, has_evals, has_alerts, has_gaps, has_stale):

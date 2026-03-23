@@ -13,6 +13,7 @@ from timelineviz.promtest import (
     plot_promtest,
     find_gap_clusters,
     _x_windows_from_gap_clusters,
+    _promtest_label_layout_validate,
     _parse_metric_selector,
     _td_to_minutes,
     _format_duration_short,
@@ -409,3 +410,25 @@ class TestPlotPromtestBreakGap:
             plot_promtest(groups, show_plot=False, break_gap_minutes=0)
         with pytest.raises(ValueError, match='break_gap'):
             plot_promtest(groups, show_plot=False, break_gap_minutes=-1)
+
+    def test_label_layout_variants_smoke(self):
+        groups = parse_promtest_string(SAMPLE_YAML)
+        for layout in ('readable', 'legacy', 'compact'):
+            fig, axs = plot_promtest(groups, show_plot=False, label_layout=layout)[0]
+            assert fig is not None
+            import matplotlib.pyplot as plt
+            plt.close(fig)
+
+    def test_invalid_label_layout_raises(self):
+        groups = parse_promtest_string(SAMPLE_YAML)
+        with pytest.raises(ValueError, match='label_layout'):
+            plot_promtest(groups, show_plot=False, label_layout='nope')
+
+
+class TestLabelLayoutValidate:
+    def test_ok(self):
+        assert _promtest_label_layout_validate('readable') == 'readable'
+
+    def test_bad(self):
+        with pytest.raises(ValueError):
+            _promtest_label_layout_validate('wide')

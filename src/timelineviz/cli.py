@@ -154,6 +154,12 @@ Example usage:
         metavar='MINUTES',
         help='With --promtest: split the time axis when gaps between anchors (0, end, eval/alert times) exceed this many minutes',
     )
+    parser.add_argument(
+        '--promtest-label-layout',
+        choices=('readable', 'legacy', 'compact'),
+        default='readable',
+        help='With --promtest: how to place eval/alert and value labels to reduce overlap (default: readable)',
+    )
 
     parser.add_argument(
         '--event-log',
@@ -428,6 +434,7 @@ def _run_promtest(args):
             output_file=os.path.join(args.output_dir, 'promtest.png') if args.output_dir else None,
             dpi=args.dpi,
             break_gap_minutes=args.promtest_break_gap_minutes,
+            label_layout=args.promtest_label_layout,
         )
         print(f"Successfully visualised {len(results)} test group(s).")
         return 0

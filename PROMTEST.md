@@ -33,6 +33,20 @@ timelineviz examples/promtest_time_breaks.yml --promtest --promtest-break-gap 40
 
 Anchors for breaks are **`0`**, the **end of the series timeline**, and **every** `eval_time` / alert `eval_time`. If the gap between two consecutive anchors (in minutes) is greater than `--promtest-break-gap`, the figure uses **multiple horizontal panels** with slash markers between them, similar to wide-format CSV timelines and `threshold_days`.
 
+### Label overlap (`--promtest-label-layout`)
+
+Dense tests often stack eval lines, value callouts, and alert text in the same region. Use:
+
+| Value | Behaviour |
+|-------|-----------|
+| **`readable`** (default) | Stagger eval/alert boxes in rows above the first series; thin value labels along steps with a minimum horizontal gap and alternating above/below; stack alert annotations when they share the same time. |
+| **`compact`** | Stronger truncation and fewer step value labels (larger minimum gap, smaller fonts). |
+| **`legacy`** | Original placement (matches older releases). |
+
+```bash
+timelineviz my_test.yml --promtest --promtest-label-layout compact --no-show
+```
+
 ### Python API
 
 ```python
@@ -62,6 +76,9 @@ plot_promtest(groups)
 
 # Optional: break the x-axis across long idle gaps (minutes between anchors)
 plot_promtest(groups, break_gap_minutes=60)
+
+# Optional: reduce overlapping labels
+plot_promtest(groups, label_layout='compact')
 ```
 
 ### Jupyter Notebook
