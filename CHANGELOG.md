@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-03-23
+
+### Added
+
+- Long-format (“event log”) timelines: `plot_event_log_timeline` — one timestamp column across many rows, optional `label_column`, and optional `filter_column` with `include_values` / `exclude_values` (e.g. log level or event type).
+- CLI flags `--event-log`, `--log-time-column`, `--log-label-column`, `--log-filter-column`, `--log-include`, `--log-exclude`; with `--output-dir`, writes `event_log_timeline.png`.
+- `examples/incident_log.csv` sample for long-format usage.
+- Root `Makefile` for common tasks (`install`, `sync`, `test`, `build`, `clean`, `publish`, `example-charts`, `example-event-log`, etc.).
+- `uv.lock` for reproducible installs with `uv sync`.
+
+### Changed
+
+- Wide-format `plot_timeline` now shares rendering with long format via internal `_plot_sorted_events`.
+
+### Fixed
+
+- CLI: removed duplicate save announcement for `--event-log` when using `--output-dir`.
+
+### Documentation
+
+- README and DEVELOPING.md: long-format quick start, Makefile reference, and `make example-event-log`.
+
 ## [0.1.0] - 2025-01-01
 
 ### Added
