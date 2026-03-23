@@ -2,11 +2,12 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/timelineviz)](https://pypi.org/project/timelineviz/)
 [![Python](https://img.shields.io/pypi/pyversions/timelineviz)](https://pypi.org/project/timelineviz/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/garrywilliams/timeline_viz/blob/main/LICENSE)
 
 Timeline visualisation for CSV data and Prometheus test files.
 
-![Example Timeline](images/timeline1.png)
+<!-- Image URLs use raw.githubusercontent.com so they render on PyPI; branch must match default (main). -->
+![Example Timeline](https://raw.githubusercontent.com/garrywilliams/timeline_viz/main/images/timeline1.png)
 
 ## Features
 
@@ -17,6 +18,7 @@ Timeline visualisation for CSV data and Prometheus test files.
 - **Visualise Prometheus `promtool` unit-test files** — series values, eval checkpoints, and alert checks on a relative time axis
 - Customisable colour schemes
 - CLI and Python API
+- **Optional next step:** use saved PNGs (plus your CSV or milestone list) as input to **multimodal / image-generation LLMs** to produce executive-style infographics — see below
 
 ## Installation
 
@@ -36,7 +38,7 @@ make install
 # or: uv pip install -e ".[dev]"
 ```
 
-Run `make` or `make help` for tests, builds, and other tasks. Details: [DEVELOPING.md](DEVELOPING.md).
+Run `make` or `make help` for tests, builds, and other tasks. Details: [DEVELOPING.md](https://github.com/garrywilliams/timeline_viz/blob/main/DEVELOPING.md).
 
 ## Quick Start
 
@@ -92,7 +94,7 @@ plot_event_log_timeline(
 )
 ```
 
-A small sample file is in [`examples/incident_log.csv`](examples/incident_log.csv).
+A small sample file is in [`examples/incident_log.csv`](https://github.com/garrywilliams/timeline_viz/blob/main/examples/incident_log.csv).
 
 ### Prometheus Test Timelines
 
@@ -110,11 +112,11 @@ groups = parse_promtest_file("my_rules_test.yml")
 plot_promtest(groups, output_file="promtest_timeline.png")
 ```
 
-![Promtest Example](images/promtest_example_1.png)
+![Promtest Example](https://raw.githubusercontent.com/garrywilliams/timeline_viz/main/images/promtest_example_1.png)
 
 Charts are self-documenting — each subplot shows the metric name and raw notation, value labels appear at transition points, eval/alert vertical lines are labelled, and a legend strip at the bottom explains all marker types.
 
-> **Full guide:** [PROMTEST.md](PROMTEST.md) — notation reference, worked examples, and all parameters.
+> **Full guide:** [PROMTEST.md](https://github.com/garrywilliams/timeline_viz/blob/main/PROMTEST.md) — notation reference, worked examples, and all parameters.
 
 ## How It Works
 
@@ -136,6 +138,20 @@ Prometheus test files define metric series as values over discrete time steps (e
 4. Shows **alert check points** with firing/pending status
 5. Labels the x-axis with **relative time offsets** (`0s`, `1m`, `2m`, …)
 
+## From chart output to executive infographics
+
+`timelineviz` is built for **faithful, technical** timelines (PNG from the CLI or `output_file=` in Python). For **stakeholder decks**, **board summaries**, or **comms**, you can treat that output as **source material** for a second step: a **multimodal or image-focused LLM** (any tool that accepts an image plus a long text brief—e.g. **Nano Banana** or similar) together with:
+
+- The **exported PNG** (or a screenshot of the figure)
+- Your **structured facts**: ordered milestones, dates, short business descriptions, KPIs, risks, and the story you want told
+- A **detailed creative prompt** (audience, tone, layout, colour rules, and what *not* to invent)
+
+The model can **redesign** the information as an infographic while you **verify** dates, labels, and numbers against your data. The sample below is an **illustrative** executive layout (sample healthcare journey) produced from that kind of workflow—not something `timelineviz` renders by itself.
+
+![Example executive infographic derived from timeline-style data and an LLM brief](https://raw.githubusercontent.com/garrywilliams/timeline_viz/main/images/executive_infographic_example.png)
+
+*Example only: narrative layout, icons, and insight rail were generated for communication design; always validate facts against your source CSV and plots.*
+
 ## API Reference
 
 ### CSV Mode
@@ -155,10 +171,10 @@ Prometheus test files define metric series as values over discrete time steps (e
 |-----------|-------------|
 | `figsize` | Figure dimensions `(width, height)` in inches |
 | `title` | Custom figure title |
-| `color_scheme` | Override colours (see [PROMTEST.md](PROMTEST.md#colour-scheme)) |
+| `color_scheme` | Override colours (see [PROMTEST.md](https://github.com/garrywilliams/timeline_viz/blob/main/PROMTEST.md#colour-scheme)) |
 | `output_file` | Save to PNG |
 | `dpi` | Resolution (default 150) |
 
 ## License
 
-[MIT](LICENSE)
+[MIT](https://github.com/garrywilliams/timeline_viz/blob/main/LICENSE)

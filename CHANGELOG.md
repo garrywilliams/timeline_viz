@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.1] - 2026-03-23
+
+### Added
+
+- `images/executive_infographic_example.png` and README section **From chart output to executive infographics** — using exported timelines with multimodal / image LLMs for stakeholder visuals.
+
+### Documentation
+
+- README: absolute `raw.githubusercontent.com` / `github.com` links for images and docs so the PyPI project page renders screenshots and links correctly.
+
 ## [0.2.0] - 2026-03-23
 
 ### Added
