@@ -17,14 +17,14 @@ A promtool test file defines metric series as values over discrete time steps an
 ### CLI
 
 ```bash
-# Display interactively
-timelineviz my_rules_test.yml --promtest
+# Display interactively (use any promtool unit-test YAML; this repo ships examples under examples/)
+timelineviz examples/promtest_label_minimal.yml --promtest
 
 # Save to file without displaying
-timelineviz my_rules_test.yml --promtest --output-dir images --no-show
+timelineviz examples/promtest_label_minimal.yml --promtest --output-dir images --no-show
 
 # Custom size and resolution
-timelineviz my_rules_test.yml --promtest --figsize 18,10 --dpi 300
+timelineviz examples/promtest_label_minimal.yml --promtest --figsize 18,10 --dpi 300
 
 # Split the chart when eval/alert times are far apart (like CSV long-gap breaks)
 timelineviz examples/promtest_time_breaks.yml --promtest --promtest-break-gap 40 \
@@ -46,7 +46,7 @@ Dense tests often stack eval lines, value callouts, and alert text in the same r
 | **`legacy`** | Original placement (matches older releases). |
 
 ```bash
-timelineviz my_test.yml --promtest --promtest-label-layout compact --no-show
+timelineviz examples/promtest_label_demo.yml --promtest --promtest-label-layout compact --no-show
 ```
 
 To compare layouts on the same fixture, use `examples/promtest_label_demo.yml` (several eval and alert times in a short window):
@@ -93,7 +93,7 @@ Use the `for layout in …` loop above to render **`legacy`** or **`compact`** l
 from timelineviz import parse_promtest_file, parse_promtest_string, plot_promtest
 
 # From a file
-groups = parse_promtest_file("my_rules_test.yml")
+groups = parse_promtest_file("examples/promtest_label_minimal.yml")
 results = plot_promtest(groups, output_file="timeline.png")
 
 # From a YAML string (handy in notebooks)

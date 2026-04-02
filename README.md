@@ -106,14 +106,16 @@ The diagram below is from that sample, using the CLI flags above (**`ERROR`** an
 Visualise `promtool` unit-test YAML files — see series values change over time, where evaluations happen, and when alerts fire.
 
 ```bash
-timelineviz my_rules_test.yml --promtest
-timelineviz my_rules_test.yml --promtest --output-dir images --no-show
+timelineviz examples/promtest_label_minimal.yml --promtest
+timelineviz examples/promtest_label_minimal.yml --promtest --output-dir images --no-show
 ```
+
+Replace the path with your own promtool unit-test YAML when needed. Checked-in examples live under [`examples/`](examples/).
 
 ```python
 from timelineviz import parse_promtest_file, plot_promtest
 
-groups = parse_promtest_file("my_rules_test.yml")
+groups = parse_promtest_file("examples/promtest_label_minimal.yml")
 plot_promtest(groups, output_file="promtest_timeline.png")
 ```
 
