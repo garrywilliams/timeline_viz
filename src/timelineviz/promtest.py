@@ -926,6 +926,7 @@ def _draw_promtest_time_column(
     interval_min: float,
     set_xlabel: bool,
     label_layout: str = "readable",
+    max_ticks: int = 12,
 ) -> int:
     """Draw one horizontal time segment (column) of a promtest figure.
 
@@ -1182,6 +1183,14 @@ def _draw_promtest_time_column(
     bottom_ax = column_axes[-1]
     tick_positions = _promtest_xtick_minutes(xlim_lo, xlim_hi, interval_min)
 
+    # Cap tick density for readability (especially for 1m intervals over long windows).
+    if len(tick_positions) > max_ticks:
+        full_positions = tick_positions
+        stride = int(np.ceil(len(full_positions) / max_ticks))
+        tick_positions = full_positions[::stride]
+        if tick_positions[-1] != full_positions[-1]:
+            tick_positions.append(full_positions[-1])
+
     def _fmt_tick(x, _pos):
         return _format_duration_short(timedelta(minutes=x))
 
@@ -1213,6 +1222,7 @@ def plot_promtest(
     color_scheme=None,
     break_gap_minutes=None,
     label_layout="readable",
+    max_ticks: int = 12
 ):
     """Visualise parsed promtool test groups.
 
@@ -1257,6 +1267,9 @@ def plot_promtest(
 
     cs = {**PROMTEST_COLOR_SCHEME, **(color_scheme or {})}
     results = []
+
+    if max_ticks <= 0:
+        raise ValueError('max_ticks must be positive')
 
     for gi, group in enumerate(groups):
         n_series = len(group.series)
@@ -1348,6 +1361,7 @@ def plot_promtest(
                 interval_min,
                 set_xlabel=True,
                 label_layout=label_layout,
+                max_ticks=max_ticks,
             )
             flat_axes = col_axes
             bottom_row_for_slash = [col_axes[-1]]
@@ -1381,6 +1395,7 @@ def plot_promtest(
                     interval_min,
                     set_xlabel=(j == n_cols - 1),
                     label_layout=label_layout,
+                    max_ticks=max_ticks,
                 )
                 max_eval_callout_rows = max(max_eval_callout_rows, r)
                 bottom_row_for_slash.append(col_axes[-1])
