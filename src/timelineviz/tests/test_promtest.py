@@ -362,6 +362,16 @@ class TestPlotPromtest:
         import matplotlib.pyplot as plt
         plt.close(fig)
 
+    def test_tick_density_capped(self):
+        groups = parse_promtest_string(SAMPLE_YAML)
+        fig, axs = plot_promtest(groups, show_plot=False, max_ticks=4)[0]
+        try:
+            ticks = axs[0].get_xticks()
+            assert len(ticks) <= 5
+        finally:
+            import matplotlib.pyplot as plt
+            plt.close(fig)
+
     def test_series_only(self):
         yaml_str = """\
 evaluation_interval: 1m
