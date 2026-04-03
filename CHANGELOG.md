@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Dependabot configuration for GitHub Actions, `uv`, and `pre-commit` updates.
 - `.pre-commit-config.yaml` and `ruff` tooling for a consistent local developer loop.
 - `varying_height` / `--varying-height` for non-promtest timelines, which staggers event label bubbles at multiple heights above and below the line.
+- `examples/review_event_log_breaks.csv` and `images/event_log_timeline_breaks.png` as a richer documented event-log example with varying-height labels and multiple time breaks.
 
 ### Changed
 

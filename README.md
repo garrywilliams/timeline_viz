@@ -108,6 +108,12 @@ The diagram below is from that sample, using the CLI flags above (**`ERROR`** an
 
 ![Long-format event log timeline (incident_log.csv, ERROR and WARN only)](https://raw.githubusercontent.com/garrywilliams/timeline_viz/main/images/event_log_timeline.png)
 
+For a denser example with more incident points, varying-height label bubbles, and multiple time breaks, see
+[`examples/review_event_log_breaks.csv`](https://github.com/garrywilliams/timeline_viz/blob/main/examples/review_event_log_breaks.csv)
+rendered with `--varying-height --threshold-days 2`:
+
+![Long-format event log timeline with varying-height labels and multiple time breaks](https://raw.githubusercontent.com/garrywilliams/timeline_viz/main/images/event_log_timeline_breaks.png)
+
 ### Prometheus Test Timelines
 
 Visualise `promtool` unit-test YAML files — see series values change over time, where evaluations happen, and when alerts fire.
