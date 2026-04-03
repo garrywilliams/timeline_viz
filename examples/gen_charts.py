@@ -12,6 +12,8 @@ Writes to ``images/``:
 - ``promtest_callout_packing.png``, ``promtest_callout_packing_compact.png`` — main-axis
   directional callout packing (``examples/promtest_callout_packing.yml``)
 - ``event_log_timeline.png`` — long-format log sample (ERROR/WARN only)
+- ``event_log_timeline_breaks.png`` — denser long-format sample with varying-height
+  labels and multiple time breaks
 """
 
 import os
@@ -165,3 +167,19 @@ plot_event_log_timeline(
     figsize=(14, 4),
 )
 print("Saved event_log_timeline.png")
+
+plot_event_log_timeline(
+    os.path.join(EXAMPLES, "review_event_log_breaks.csv"),
+    timestamp_column="ts",
+    label_column="message",
+    filter_column="level",
+    include_values=["ERROR", "WARN"],
+    threshold_days=2,
+    varying_height=True,
+    title="Event log: multiple incident windows with varying-height labels",
+    show_plot=False,
+    output_file=os.path.join(OUT_DIR, "event_log_timeline_breaks.png"),
+    dpi=150,
+    figsize=(15, 5),
+)
+print("Saved event_log_timeline_breaks.png")

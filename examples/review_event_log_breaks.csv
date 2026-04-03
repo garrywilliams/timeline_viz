@@ -1,0 +1,16 @@
+ts,level,message
+2024-06-01 08:00:00,INFO,Service booted
+2024-06-01 08:12:00,WARN,Cache warm-up slower than expected
+2024-06-01 08:25:00,ERROR,First API timeout spike detected
+2024-06-01 08:31:00,WARN,Automatic retry queue started
+2024-06-01 08:44:00,ERROR,Dependency health check failed
+2024-06-01 09:02:00,WARN,Traffic shifted to fallback path
+2024-06-04 11:10:00,INFO,Post-incident verification started
+2024-06-04 11:18:00,WARN,Background job lag exceeded threshold
+2024-06-04 11:27:00,ERROR,Reporting pipeline backfill failed
+2024-06-04 11:39:00,WARN,Manual replay requested
+2024-06-10 15:05:00,INFO,Second rollout window opened
+2024-06-10 15:16:00,WARN,Latency regression observed in one region
+2024-06-10 15:29:00,ERROR,Canary rollback triggered
+2024-06-10 15:42:00,WARN,Rollback validation still in progress
+2024-06-10 15:55:00,ERROR,Final consistency check blocked on retries
