@@ -1,0 +1,12 @@
+2026-04-02T04:21:43.796757292Z INFO | realtime.gateway.pipeline: boot sequence completed
+2026-04-02T04:22:01.103481000Z WARN | realtime.gateway.pipeline: reconnect latency exceeded threshold
+2026-04-02T04:22:15.551209000Z ERROR | realtime.gateway.pipeline: rtc signal stream closed unexpectedly
+2026-04-02T04:24:48.014882000Z INFO | realtime.gateway.pipeline: retry attempt 1 succeeded
+2026-04-02T04:25:11.882501000Z WARN | realtime.gateway.audio: participant audio jitter detected
+2026-04-02T04:25:38.441920000Z INFO | realtime.gateway.pipeline: session stabilized after reconnect
+2026-04-02T08:11:03.201125000Z INFO | realtime.gateway.pipeline: fresh room session started
+2026-04-02T08:11:21.991305000Z WARN | realtime.gateway.transcription: fallback provider enabled
+2026-04-02T08:11:52.663274000Z ERROR | realtime.gateway.synthesis: worker timeout after 12 seconds
+2026-04-02T08:13:16.280991000Z INFO | realtime.gateway.synthesis: worker recovered
+2026-04-02T08:13:42.512388000Z WARN | realtime.gateway.network: packet loss remained above 4 percent
+2026-04-02T08:14:17.100442000Z INFO | realtime.gateway.pipeline: customer call completed successfully

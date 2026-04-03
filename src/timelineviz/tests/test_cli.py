@@ -81,6 +81,11 @@ def test_parse_args_event_log_requires_time_column():
         parse_args(["data.csv", "--event-log"])
 
 
+def test_parse_args_raw_log_format_requires_event_log():
+    with pytest.raises(SystemExit):
+        parse_args(["logs.txt", "--raw-log-format", "auto"])
+
+
 def test_parse_args_event_log_conflicts_with_promtest():
     with pytest.raises(SystemExit):
         parse_args(
@@ -136,6 +141,14 @@ def test_parse_args_event_log_ok():
     assert args.log_include == ["ERROR", "WARN"]
     assert args.log_exclude == ["DEBUG"]
     assert args.varying_height is False
+
+
+def test_parse_args_raw_log_event_log_defaults():
+    args = parse_args(["--event-log", "--raw-log-format"])
+    assert args.log_time_column == "ts"
+    assert args.log_label_column == "message"
+    assert args.log_filter_column == "level"
+    assert args.raw_log_format == "auto"
 
 
 def test_main_basic_functionality(tmp_path):
@@ -250,6 +263,85 @@ def test_main_reads_event_log_from_stdin(monkeypatch, tmp_path):
     assert (output_dir / "event_log_timeline.png").is_file()
 
 
+def test_main_reads_raw_kubectl_log_from_stdin(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        cli_module.sys,
+        "stdin",
+        _FakeStdin(
+            "2026-04-02T04:21:43.796757292Z INFO | first message\n"
+            "2026-04-02T04:21:44.796757292Z WARN | second message\n"
+        ),
+    )
+    output_dir = tmp_path / "out"
+    result = main(
+        [
+            "--event-log",
+            "--raw-log-format",
+            "auto",
+            "--log-label-column",
+            "message",
+            "--log-filter-column",
+            "level",
+            "--log-include",
+            "INFO",
+            "--output-dir",
+            str(output_dir),
+            "--no-show",
+        ]
+    )
+    assert result == 0
+    assert (output_dir / "event_log_timeline.png").is_file()
+
+
+def test_main_reads_raw_kubectl_log_from_file(tmp_path):
+    log_path = tmp_path / "kubectl.log"
+    log_path.write_text(
+        "2026-04-02T04:21:43.796757292Z INFO | first message\n"
+        "2026-04-02T04:21:44.796757292Z ERROR | second message\n"
+    )
+    output_dir = tmp_path / "out"
+    result = main(
+        [
+            str(log_path),
+            "--event-log",
+            "--raw-log-format",
+            "auto",
+            "--log-include",
+            "INFO",
+            "--output-dir",
+            str(output_dir),
+            "--no-show",
+        ]
+    )
+    assert result == 0
+    assert (output_dir / "event_log_timeline.png").is_file()
+
+
+def test_main_reads_generic_timestamped_log_from_stdin(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        cli_module.sys,
+        "stdin",
+        _FakeStdin(
+            "2026-04-02 04:21:43,796 INFO app booted\n2026-04-02 04:21:44,123 ERROR app failed\n"
+        ),
+    )
+    output_dir = tmp_path / "out"
+    result = main(
+        [
+            "--event-log",
+            "--raw-log-format",
+            "timestamped",
+            "--log-include",
+            "INFO",
+            "--output-dir",
+            str(output_dir),
+            "--no-show",
+        ]
+    )
+    assert result == 0
+    assert (output_dir / "event_log_timeline.png").is_file()
+
+
 def test_main_reads_promtest_from_stdin(monkeypatch, tmp_path):
     monkeypatch.setattr(
         cli_module.sys,
@@ -274,6 +366,13 @@ def test_main_omitted_input_without_pipe_errors(monkeypatch, capsys):
     result = main(["--timestamp-columns", "timestamp", "--no-show"])
     assert result == 1
     assert "No input file provided" in capsys.readouterr().err
+
+
+def test_main_raw_kubectl_log_without_matches(monkeypatch, capsys):
+    monkeypatch.setattr(cli_module.sys, "stdin", _FakeStdin("not a kubectl log line\n"))
+    result = main(["--event-log", "--raw-log-format", "auto", "--no-show"])
+    assert result == 1
+    assert "No timestamped log lines matched" in capsys.readouterr().err
 
 
 def test_main_label_mappings_file_not_found(capsys):
@@ -935,7 +1034,7 @@ def test_main_invalid_figsize_after_parse_args(tmp_path, monkeypatch, capsys):
 
 
 def test_run_event_log_invalid_figsize(capsys):
-    args = SimpleNamespace(figsize="1,2,3", colors=None)
+    args = SimpleNamespace(figsize="1,2,3", colors=None, raw_log_format=None)
     assert cli_module._run_event_log(args) == 1
     assert "Error parsing figure size" in capsys.readouterr().err
 
@@ -963,6 +1062,7 @@ def test_run_event_log_invalid_color_scheme(capsys):
         threshold_days=1,
         point_size=10,
         varying_height=False,
+        raw_log_format=None,
         no_show=True,
         dpi=150,
     )
@@ -984,6 +1084,7 @@ def test_run_event_log_unexpected_exception(monkeypatch, capsys):
         threshold_days=1,
         point_size=10,
         varying_height=False,
+        raw_log_format=None,
         no_show=True,
         dpi=150,
     )
@@ -1015,6 +1116,7 @@ def test_run_event_log_file_not_found(capsys):
         threshold_days=1,
         point_size=10,
         varying_height=False,
+        raw_log_format=None,
         no_show=True,
         dpi=150,
     )
@@ -1035,6 +1137,106 @@ def test_run_promtest_invalid_figsize_falls_back(monkeypatch):
     monkeypatch.setattr(cli_module, "_load_promtest_groups", lambda _path: ["group"])
     monkeypatch.setattr(cli_module, "plot_promtest", lambda *_args, **_kwargs: [("fig", [])])
     assert cli_module._run_promtest(args) == 0
+
+
+def test_parse_raw_timestamped_logs_normalizes_level_and_pipe():
+    df = cli_module._parse_raw_timestamped_logs(
+        "2026-04-02T04:21:43.796757292Z INFO     | first message\n"
+        "2026-04-02T04:21:44.796757292Z WARN second message\n"
+    )
+    assert df.to_dict(orient="records") == [
+        {
+            "ts": "2026-04-02T04:21:43.796757292Z",
+            "level": "INFO",
+            "message": "first message",
+        },
+        {
+            "ts": "2026-04-02T04:21:44.796757292Z",
+            "level": "WARN",
+            "message": "second message",
+        },
+    ]
+
+
+def test_parse_raw_timestamped_logs_rejects_unmatched_text():
+    with pytest.raises(ValueError, match="No timestamped log lines matched"):
+        cli_module._parse_raw_timestamped_logs("hello world\nstill not logs\n")
+
+
+def test_parse_raw_timestamped_logs_skips_blank_lines():
+    df = cli_module._parse_raw_timestamped_logs(
+        "\n2026-04-02T04:21:43.796757292Z INFO | first message\n\n"
+    )
+    assert df["level"].tolist() == ["INFO"]
+
+
+def test_parse_raw_timestamped_logs_handles_no_level():
+    df = cli_module._parse_raw_timestamped_logs(
+        "2026-04-02T04:21:43.796757292Z request completed successfully\n"
+    )
+    assert df.to_dict(orient="records") == [
+        {
+            "ts": "2026-04-02T04:21:43.796757292Z",
+            "level": "",
+            "message": "request completed successfully",
+        }
+    ]
+
+
+def test_parse_raw_timestamped_logs_handles_pipe_without_level():
+    df = cli_module._parse_raw_timestamped_logs(
+        "2026-04-02T04:21:43.796757292Z | request completed successfully\n"
+    )
+    assert df.to_dict(orient="records") == [
+        {
+            "ts": "2026-04-02T04:21:43.796757292Z",
+            "level": "",
+            "message": "request completed successfully",
+        }
+    ]
+
+
+def test_parse_raw_timestamped_logs_handles_bracketed_level():
+    df = cli_module._parse_raw_timestamped_logs(
+        "2026-04-02 04:21:43,796 [WARNING] cache warming slowly\n"
+    )
+    assert df.to_dict(orient="records") == [
+        {
+            "ts": "2026-04-02 04:21:43,796",
+            "level": "WARN",
+            "message": "cache warming slowly",
+        }
+    ]
+
+
+def test_parse_raw_timestamped_logs_normalizes_critical_to_fatal():
+    df = cli_module._parse_raw_timestamped_logs(
+        "2026-04-02 04:21:43,796 CRITICAL cache warming failed\n"
+    )
+    assert df.to_dict(orient="records") == [
+        {
+            "ts": "2026-04-02 04:21:43,796",
+            "level": "FATAL",
+            "message": "cache warming failed",
+        }
+    ]
+
+
+def test_load_text_input_file_not_found():
+    with pytest.raises(FileNotFoundError):
+        cli_module._load_text_input("missing.log")
+
+
+def test_load_text_input_rejects_empty_file(tmp_path):
+    log_path = tmp_path / "empty.log"
+    log_path.write_text("")
+    with pytest.raises(ValueError, match="No input data found"):
+        cli_module._load_text_input(str(log_path))
+
+
+def test_load_event_log_input_rejects_unknown_raw_format():
+    with pytest.raises(ValueError, match="Unsupported raw log format"):
+        cli_module._load_event_log_input("-", raw_log_format="unknown")
 
 
 def test_run_promtest_file_not_found(capsys):

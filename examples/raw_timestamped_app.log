@@ -1,0 +1,12 @@
+2026-04-03 09:00:01,103 INFO app.server Boot sequence started for deployment blue
+2026-04-03 09:00:03,410 INFO app.server Cache primed with 128 configuration objects
+2026-04-03 09:00:05,822 WARN app.queue Inbound queue depth crossed soft limit
+2026-04-03 09:00:08,117 ERROR app.queue Failed to publish invoice.created event
+2026-04-03 09:00:14,992 INFO app.queue Replay worker drained backlog after retry
+2026-04-03 09:00:27,661 [WARNING] app.cache Cache miss rate exceeded warmup budget
+2026-04-03 09:00:31,004 INFO app.cache Cache warmup completed
+2026-04-03 13:42:02,415 INFO app.reports Scheduled reporting window started
+2026-04-03 13:42:18,927 WARN app.reports Report generation slowed by warehouse contention
+2026-04-03 13:42:44,183 CRITICAL app.reports Revenue summary export aborted by upstream timeout
+2026-04-03 13:43:09,220 INFO app.reports Retry pipeline activated with reduced batch size
+2026-04-03 13:43:38,007 INFO app.reports Export completed after fallback path
