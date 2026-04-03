@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- GitHub Actions CI workflow for linting, multi-version tests, packaging validation, and a Windows smoke test.
+- GitHub Actions release workflow for GitHub Release-driven PyPI publishing with Trusted Publishing.
+- Dependabot configuration for GitHub Actions, `uv`, and `pre-commit` updates.
+- `.pre-commit-config.yaml` and `ruff` tooling for a consistent local developer loop.
+
+### Changed
+
+- Supported Python versions are now 3.11+.
+- `Makefile` now includes local lint, format, dependency lock, dist validation, and `check` targets that mirror CI.
+- `DEVELOPING.md` now documents the contributor workflow, release flow, Mermaid diagrams, and the one-time PyPI/GitHub environment setup.
+
 ## [0.3.1] - 2026-03-25
 
 ### Added

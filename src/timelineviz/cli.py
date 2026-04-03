@@ -6,28 +6,30 @@ from CSV files without writing Python code.
 """
 
 import argparse
+import json
 import os
 import sys
-import json
+
 import pandas as pd
+
+from timelineviz.promtest import parse_promtest_file, plot_promtest
 from timelineviz.timeline import (
-    plot_multiple_timelines,
     plot_event_log_timeline,
-    DEFAULT_COLOR_SCHEME,
+    plot_multiple_timelines,
 )
 from timelineviz.utils import create_color_scheme
-from timelineviz.promtest import parse_promtest_file, plot_promtest
+
 
 def parse_args(args=None):
     """Parse command line arguments.
-    
+
     Parameters:
     -----------
     args : list, optional
         Command line arguments. If None, uses sys.argv[1:]
     """
     parser = argparse.ArgumentParser(
-        description='Generate timeline visualizations from CSV data',
+        description="Generate timeline visualizations from CSV data",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Example usage:
@@ -53,163 +55,128 @@ Example usage:
   timelineviz incident.csv --event-log --log-time-column ts \\
     --log-label-column message --log-filter-column level \\
     --log-include ERROR WARN --output-dir out
-"""
+""",
     )
-    
-    parser.add_argument('csv_file', help='CSV file containing timestamp data')
-    
+
+    parser.add_argument("csv_file", help="CSV file containing timestamp data")
+
     parser.add_argument(
-        '--timestamp-columns', '-t', 
-        nargs='+', 
-        help='Column names containing timestamps'
+        "--timestamp-columns", "-t", nargs="+", help="Column names containing timestamps"
     )
-    
+
     parser.add_argument(
-        '--detect-timestamps', '-d',
-        action='store_true',
-        help='Automatically detect timestamp columns'
+        "--detect-timestamps",
+        "-d",
+        action="store_true",
+        help="Automatically detect timestamp columns",
     )
-    
+
+    parser.add_argument("--id-column", "-i", help="Column name for entity identifier")
+
     parser.add_argument(
-        '--id-column', '-i',
-        help='Column name for entity identifier'
+        "--entity-name",
+        "-e",
+        default="Entity",
+        help="Name to use for entities in titles (e.g., Patient, Order, User)",
     )
-    
+
+    parser.add_argument("--output-dir", "-o", help="Directory to save timeline images")
+
     parser.add_argument(
-        '--entity-name', '-e',
-        default='Entity',
-        help='Name to use for entities in titles (e.g., Patient, Order, User)'
+        "--max-entities", "-m", type=int, help="Maximum number of entities to process"
     )
-    
+
     parser.add_argument(
-        '--output-dir', '-o',
-        help='Directory to save timeline images'
-    )
-    
-    parser.add_argument(
-        '--max-entities', '-m',
-        type=int,
-        help='Maximum number of entities to process'
-    )
-    
-    parser.add_argument(
-        '--threshold-days', '-T',
+        "--threshold-days",
+        "-T",
         type=float,
         default=1.0,
-        help='Number of days gap to consider as a break in timeline'
+        help="Number of days gap to consider as a break in timeline",
     )
-    
+
+    parser.add_argument("--figsize", default="15,5", help="Figure size in inches (width,height)")
+
+    parser.add_argument("--point-size", type=int, default=10, help="Size of the event points")
+
+    parser.add_argument("--colors", "-c", help="JSON string with custom color scheme")
+
+    parser.add_argument("--label-mappings", "-l", help="JSON string with custom label mappings")
+
     parser.add_argument(
-        '--figsize', 
-        default='15,5',
-        help='Figure size in inches (width,height)'
-    )
-    
-    parser.add_argument(
-        '--point-size',
-        type=int,
-        default=10,
-        help='Size of the event points'
-    )
-    
-    parser.add_argument(
-        '--colors', '-c',
-        help='JSON string with custom color scheme'
-    )
-    
-    parser.add_argument(
-        '--label-mappings', '-l',
-        help='JSON string with custom label mappings'
-    )
-    
-    parser.add_argument(
-        '--remove-suffixes', '-r',
-        nargs='+',
-        help='Suffixes to remove when creating labels'
-    )
-    
-    parser.add_argument(
-        '--no-show',
-        action='store_true',
-        help="Don't display plots (only save to files)"
-    )
-    
-    parser.add_argument(
-        '--dpi',
-        type=int,
-        default=150,
-        help='Resolution for saved images'
+        "--remove-suffixes", "-r", nargs="+", help="Suffixes to remove when creating labels"
     )
 
     parser.add_argument(
-        '--promtest',
-        action='store_true',
-        help='Treat input as a promtool unit-test YAML file and visualise series/alerts'
+        "--no-show", action="store_true", help="Don't display plots (only save to files)"
+    )
+
+    parser.add_argument("--dpi", type=int, default=150, help="Resolution for saved images")
+
+    parser.add_argument(
+        "--promtest",
+        action="store_true",
+        help="Treat input as a promtool unit-test YAML file and visualise series/alerts",
     )
     parser.add_argument(
-        '--promtest-break-gap',
-        dest='promtest_break_gap_minutes',
+        "--promtest-break-gap",
+        dest="promtest_break_gap_minutes",
         type=float,
         default=None,
-        metavar='MINUTES',
-        help='With --promtest: split the time axis when gaps between anchors (0, end, eval/alert times) exceed this many minutes',
+        metavar="MINUTES",
+        help="With --promtest: split the time axis when gaps between anchors (0, end, eval/alert times) exceed this many minutes",
     )
     parser.add_argument(
-        '--promtest-label-layout',
-        choices=('readable', 'legacy', 'compact'),
-        default='readable',
-        help='With --promtest: how to place eval/alert and value labels to reduce overlap (default: readable)',
+        "--promtest-label-layout",
+        choices=("readable", "legacy", "compact"),
+        default="readable",
+        help="With --promtest: how to place eval/alert and value labels to reduce overlap (default: readable)",
     )
 
     parser.add_argument(
-        '--event-log',
-        action='store_true',
-        help='Long-format mode: one timestamp column across many rows (see --log-*)'
+        "--event-log",
+        action="store_true",
+        help="Long-format mode: one timestamp column across many rows (see --log-*)",
     )
     parser.add_argument(
-        '--log-time-column',
-        metavar='COL',
-        help='Timestamp column (required with --event-log)'
+        "--log-time-column", metavar="COL", help="Timestamp column (required with --event-log)"
     )
     parser.add_argument(
-        '--log-label-column',
-        metavar='COL',
-        help='Column to use as the text label for each event'
+        "--log-label-column", metavar="COL", help="Column to use as the text label for each event"
     )
     parser.add_argument(
-        '--log-filter-column',
-        metavar='COL',
-        help='Column for --log-include / --log-exclude (e.g. level, event_type)'
+        "--log-filter-column",
+        metavar="COL",
+        help="Column for --log-include / --log-exclude (e.g. level, event_type)",
     )
     parser.add_argument(
-        '--log-include',
-        nargs='+',
-        metavar='VALUE',
-        help='Keep only rows where the filter column equals one of these values'
+        "--log-include",
+        nargs="+",
+        metavar="VALUE",
+        help="Keep only rows where the filter column equals one of these values",
     )
     parser.add_argument(
-        '--log-exclude',
-        nargs='+',
-        metavar='VALUE',
-        help='Drop rows where the filter column equals one of these values'
+        "--log-exclude",
+        nargs="+",
+        metavar="VALUE",
+        help="Drop rows where the filter column equals one of these values",
     )
-    
+
     # Parse the arguments
     args = parser.parse_args(args)
-    
+
     # Validate figure size format
     try:
-        width, height = map(float, args.figsize.split(','))
+        width, height = map(float, args.figsize.split(","))
     except ValueError:
         parser.error("Figure size must be in format 'width,height'")
-    
+
     # Convert JSON strings to dicts
     if args.colors:
         try:
             args.colors = json.loads(args.colors)
         except json.JSONDecodeError:
             parser.error("Invalid JSON format for --colors")
-            
+
     if args.label_mappings:
         try:
             args.label_mappings = json.loads(args.label_mappings)
@@ -225,12 +192,13 @@ Example usage:
             parser.error("--promtest-break-gap must be positive")
     if args.event_log and not args.log_time_column:
         parser.error("--event-log requires --log-time-column")
-            
+
     return args
+
 
 def main(args=None):
     """Main entry point for the CLI tool.
-    
+
     Parameters:
     -----------
     args : list, optional
@@ -238,9 +206,9 @@ def main(args=None):
     """
     if args is None:
         args = sys.argv[1:]
-    
+
     args = parse_args(args)
-    
+
     # Validate input file exists
     if not os.path.isfile(args.csv_file):
         print(f"Error: File '{args.csv_file}' not found", file=sys.stderr)
@@ -253,40 +221,45 @@ def main(args=None):
     # --- Promtest mode ---
     if args.promtest:
         return _run_promtest(args)
-    
+
     # Parse figure size
     try:
-        figsize = tuple(map(float, args.figsize.split(',')))
+        figsize = tuple(map(float, args.figsize.split(",")))
         if len(figsize) != 2:
             raise ValueError("Figure size must be width,height")
     except ValueError as e:
         print(f"Error parsing figure size: {e}", file=sys.stderr)
         return 1
-    
+
     # Initialize color_scheme
     color_scheme = None
-    
+
     # Validate color scheme if provided
     if args.colors:
         required_keys = [
-            'line', 'point_edge', 'point_face', 'connector',
-            'label_bg', 'label_edge', 'slashes', 'title'
+            "line",
+            "point_edge",
+            "point_face",
+            "connector",
+            "label_bg",
+            "label_edge",
+            "slashes",
+            "title",
         ]
         missing_keys = [key for key in required_keys if key not in args.colors]
         if missing_keys:
             print(f"Error: Missing required color keys: {missing_keys}")
             return 1
-        
+
         # Validate each color value
         try:
             color_scheme = create_color_scheme(
-                base_color=args.colors.get('line'),
-                accent_color=args.colors.get('point_face')
+                base_color=args.colors.get("line"), accent_color=args.colors.get("point_face")
             )
         except ValueError as e:
             print(f"Error: Invalid color scheme: {e}")
             return 1
-    
+
     # Validate label mappings if provided (wide CSV mode only)
     if args.label_mappings and not args.event_log:
         # Read CSV to get column names
@@ -295,14 +268,16 @@ def main(args=None):
         if invalid_columns:
             print(f"Error: Label mappings reference non-existent columns: {invalid_columns}")
             return 1
-    
+
     # Check if either timestamp columns or detection are specified
     if not args.timestamp_columns and not args.detect_timestamps and not args.event_log:
-        print("Warning: No timestamp columns specified and auto-detection disabled.", 
-              "Will attempt to detect common timestamp column patterns anyway.",
-              file=sys.stderr)
+        print(
+            "Warning: No timestamp columns specified and auto-detection disabled.",
+            "Will attempt to detect common timestamp column patterns anyway.",
+            file=sys.stderr,
+        )
         args.detect_timestamps = True
-    
+
     # Generate the timelines
     try:
         processed = plot_multiple_timelines(
@@ -320,27 +295,31 @@ def main(args=None):
             dpi=args.dpi,
             label_mappings=args.label_mappings,
             remove_suffixes=args.remove_suffixes,
-            entity_name=args.entity_name
+            entity_name=args.entity_name,
         )
-        
+
         if not processed:
-            print("No timelines were generated. Check your input data and parameters.", 
-                  file=sys.stderr)
+            print(
+                "No timelines were generated. Check your input data and parameters.",
+                file=sys.stderr,
+            )
             return 1
-        
+
         print(f"Successfully processed {len(processed)} timelines.")
         return 0
-        
+
     except Exception as e:
         print(f"Error generating timelines: {e}", file=sys.stderr)
         import traceback
+
         traceback.print_exc()
         return 1
+
 
 def _run_event_log(args):
     """Handle --event-log mode."""
     try:
-        figsize = tuple(map(float, args.figsize.split(',')))
+        figsize = tuple(map(float, args.figsize.split(",")))
         if len(figsize) != 2:
             raise ValueError("Figure size must be width,height")
     except ValueError as e:
@@ -350,8 +329,14 @@ def _run_event_log(args):
     color_scheme = None
     if args.colors:
         required_keys = [
-            'line', 'point_edge', 'point_face', 'connector',
-            'label_bg', 'label_edge', 'slashes', 'title'
+            "line",
+            "point_edge",
+            "point_face",
+            "connector",
+            "label_bg",
+            "label_edge",
+            "slashes",
+            "title",
         ]
         missing_keys = [key for key in required_keys if key not in args.colors]
         if missing_keys:
@@ -359,8 +344,7 @@ def _run_event_log(args):
             return 1
         try:
             color_scheme = create_color_scheme(
-                base_color=args.colors.get('line'),
-                accent_color=args.colors.get('point_face')
+                base_color=args.colors.get("line"), accent_color=args.colors.get("point_face")
             )
         except ValueError as e:
             print(f"Error: Invalid color scheme: {e}", file=sys.stderr)
@@ -369,7 +353,7 @@ def _run_event_log(args):
     output_file = None
     if args.output_dir:
         os.makedirs(args.output_dir, exist_ok=True)
-        output_file = os.path.join(args.output_dir, 'event_log_timeline.png')
+        output_file = os.path.join(args.output_dir, "event_log_timeline.png")
 
     try:
         fig, _axs = plot_event_log_timeline(
@@ -393,12 +377,12 @@ def _run_event_log(args):
     except Exception as e:
         print(f"Error generating event log timeline: {e}", file=sys.stderr)
         import traceback
+
         traceback.print_exc()
         return 1
 
     if fig is None:
-        print("No event log timeline was generated. Check filters and timestamps.",
-              file=sys.stderr)
+        print("No event log timeline was generated. Check filters and timestamps.", file=sys.stderr)
         return 1
 
     # Save path is already printed by plot_event_log_timeline / _plot_sorted_events
@@ -409,7 +393,7 @@ def _run_event_log(args):
 def _run_promtest(args):
     """Handle --promtest mode."""
     try:
-        figsize = tuple(map(float, args.figsize.split(',')))
+        figsize = tuple(map(float, args.figsize.split(",")))
     except ValueError:
         figsize = None
 
@@ -431,7 +415,7 @@ def _run_promtest(args):
             groups,
             figsize=figsize,
             show_plot=not args.no_show,
-            output_file=os.path.join(args.output_dir, 'promtest.png') if args.output_dir else None,
+            output_file=os.path.join(args.output_dir, "promtest.png") if args.output_dir else None,
             dpi=args.dpi,
             break_gap_minutes=args.promtest_break_gap_minutes,
             label_layout=args.promtest_label_layout,
@@ -441,9 +425,10 @@ def _run_promtest(args):
     except Exception as e:
         print(f"Error generating promtest visualisation: {e}", file=sys.stderr)
         import traceback
+
         traceback.print_exc()
         return 1
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

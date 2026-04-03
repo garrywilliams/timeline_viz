@@ -14,5 +14,8 @@ wheels/
 htmlcov/
 .pytest_cache/
 
+# Local tooling caches
+.ruff_cache/
+
 # OS
 .DS_Store

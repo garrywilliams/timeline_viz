@@ -1,0 +1,38 @@
+changelog:
+  exclude:
+    authors:
+      - dependabot[bot]
+      - github-actions[bot]
+      - pre-commit-ci[bot]
+    labels:
+      - ignore-for-release
+  categories:
+    - title: Breaking Changes
+      labels:
+        - breaking-change
+        - semver-major
+    - title: Features
+      labels:
+        - enhancement
+        - feature
+        - semver-minor
+    - title: Fixes
+      labels:
+        - bug
+        - bugfix
+        - fix
+    - title: Documentation
+      labels:
+        - documentation
+        - docs
+    - title: Maintenance
+      labels:
+        - chore
+        - maintenance
+        - refactor
+    - title: Dependencies
+      labels:
+        - dependencies
+    - title: Other Changes
+      labels:
+        - "*"

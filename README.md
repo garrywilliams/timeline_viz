@@ -2,6 +2,7 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/timelineviz)](https://pypi.org/project/timelineviz/)
 [![Python](https://img.shields.io/pypi/pyversions/timelineviz)](https://pypi.org/project/timelineviz/)
+[![CI](https://github.com/garrywilliams/timeline_viz/actions/workflows/ci.yml/badge.svg)](https://github.com/garrywilliams/timeline_viz/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/garrywilliams/timeline_viz/blob/main/LICENSE)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/garrywilliams/timeline_viz)
 
@@ -30,16 +31,18 @@ pip install timelineviz
 uv add timelineviz
 ```
 
+Python 3.11 or newer is required.
+
 For development:
 
 ```bash
 git clone https://github.com/garrywilliams/timeline_viz.git
 cd timeline_viz
 make install
-# or: uv pip install -e ".[dev]"
+make precommit-install
 ```
 
-Run `make` or `make help` for tests, builds, and other tasks. Details: [DEVELOPING.md](https://github.com/garrywilliams/timeline_viz/blob/main/DEVELOPING.md).
+Run `make` or `make help` for tests, linting, builds, and other tasks. CI, release, and maintainer setup details live in [DEVELOPING.md](https://github.com/garrywilliams/timeline_viz/blob/main/DEVELOPING.md).
 
 ## Quick Start
 

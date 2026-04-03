@@ -15,23 +15,20 @@ Time model:
 
 import re
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import timedelta
 from typing import List, Optional, Sequence, Tuple
 
+import matplotlib.pyplot as plt
 import numpy as np
 import yaml
-import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
-
 
 # ---------------------------------------------------------------------------
 # Duration parsing
 # ---------------------------------------------------------------------------
 
-_DURATION_RE = re.compile(
-    r'^(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?(?:(\d+)ms)?$'
-)
+_DURATION_RE = re.compile(r"^(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?(?:(\d+)ms)?$")
 
 
 def parse_duration(s):
@@ -45,9 +42,10 @@ def parse_duration(s):
     minutes = int(m.group(3) or 0)
     seconds = int(m.group(4) or 0)
     milliseconds = int(m.group(5) or 0)
-    td = timedelta(days=days, hours=hours, minutes=minutes,
-                   seconds=seconds, milliseconds=milliseconds)
-    if td == timedelta(0) and s != '0s' and s != '0ms':
+    td = timedelta(
+        days=days, hours=hours, minutes=minutes, seconds=seconds, milliseconds=milliseconds
+    )
+    if td == timedelta(0) and s != "0s" and s != "0ms":
         raise ValueError(f"Invalid duration: {s!r}")
     return td
 
@@ -57,13 +55,13 @@ def parse_duration(s):
 # ---------------------------------------------------------------------------
 
 _EXPAND_RE = re.compile(
-    r'^'
-    r'(?P<value>[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)'  # numeric value
-    r'(?:'
-    r'  (?P<op>[+-])(?P<step>[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)' # +/-step
-    r')?'
-    r'(?:x(?P<repeat>\d+))?'  # xN repeat
-    r'$',
+    r"^"
+    r"(?P<value>[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)"  # numeric value
+    r"(?:"
+    r"  (?P<op>[+-])(?P<step>[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)"  # +/-step
+    r")?"
+    r"(?:x(?P<repeat>\d+))?"  # xN repeat
+    r"$",
     re.VERBOSE,
 )
 
@@ -87,35 +85,35 @@ def expand_values(notation):
     result = []
     for token in tokens:
         # --- missing / gap ---
-        if token == '_':
+        if token == "_":
             result.append(None)
             continue
-        m_gap = re.match(r'^_x(\d+)$', token)
+        m_gap = re.match(r"^_x(\d+)$", token)
         if m_gap:
             result.extend([None] * int(m_gap.group(1)))
             continue
 
         # --- stale ---
-        if token.lower() == 'stale':
-            result.append('stale')
+        if token.lower() == "stale":
+            result.append("stale")
             continue
 
         # --- numeric expanding ---
         m = _EXPAND_RE.match(token)
         if m:
-            value = float(m.group('value'))
-            op = m.group('op')
-            step = float(m.group('step')) if m.group('step') else 0.0
-            repeat = int(m.group('repeat')) if m.group('repeat') is not None else 0
+            value = float(m.group("value"))
+            op = m.group("op")
+            step = float(m.group("step")) if m.group("step") else 0.0
+            repeat = int(m.group("repeat")) if m.group("repeat") is not None else 0
 
-            if op is None and m.group('repeat') is not None:
+            if op is None and m.group("repeat") is not None:
                 # shorthand  axN  →  a repeated N+1 times
                 result.extend([value] * (repeat + 1))
             elif op is None:
                 # plain number
                 result.append(value)
             else:
-                sign = 1.0 if op == '+' else -1.0
+                sign = 1.0 if op == "+" else -1.0
                 for i in range(repeat + 1):
                     result.append(value + sign * step * i)
             continue
@@ -128,14 +126,16 @@ def expand_values(notation):
 # Data model
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class SeriesData:
     """One input_series from a promtool test."""
+
     metric: str
     labels: dict
-    values: list          # list[float | None | 'stale']
+    values: list  # list[float | None | 'stale']
     interval: timedelta
-    raw_values: str = ''  # original notation string e.g. '1+0x14 0+0x5'
+    raw_values: str = ""  # original notation string e.g. '1+0x14 0+0x5'
 
     @property
     def time_offsets(self):
@@ -145,16 +145,16 @@ class SeriesData:
     @property
     def display_name(self):
         if self.labels:
-            label_str = ', '.join(f'{k}="{v}"' for k, v in self.labels.items()
-                                  if k != '__name__')
+            label_str = ", ".join(f'{k}="{v}"' for k, v in self.labels.items() if k != "__name__")
             if label_str:
-                return f'{self.metric}{{{label_str}}}'
+                return f"{self.metric}{{{label_str}}}"
         return self.metric
 
 
 @dataclass
 class EvalPoint:
     """A promql_expr_test evaluation checkpoint."""
+
     expr: str
     eval_time: timedelta
     expected_results: list  # raw from yaml
@@ -163,20 +163,22 @@ class EvalPoint:
 @dataclass
 class AlertCheck:
     """An alert_rule_test checkpoint."""
+
     alertname: str
     eval_time: timedelta
-    exp_alerts: list       # raw from yaml
+    exp_alerts: list  # raw from yaml
     for_duration: Optional[timedelta] = None
 
 
 @dataclass
 class PromTestGroup:
     """One test group from the YAML file."""
+
     interval: timedelta
-    series: list           # list[SeriesData]
-    eval_points: list      # list[EvalPoint]
-    alert_checks: list     # list[AlertCheck]
-    name: str = ''
+    series: list  # list[SeriesData]
+    eval_points: list  # list[EvalPoint]
+    alert_checks: list  # list[AlertCheck]
+    name: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -184,8 +186,8 @@ class PromTestGroup:
 # ---------------------------------------------------------------------------
 
 _METRIC_RE = re.compile(
-    r'^(?P<name>[a-zA-Z_:][a-zA-Z0-9_:]*)'
-    r'(?:\{(?P<labels>[^}]*)\})?$'
+    r"^(?P<name>[a-zA-Z_:][a-zA-Z0-9_:]*)"
+    r"(?:\{(?P<labels>[^}]*)\})?$"
 )
 
 
@@ -194,62 +196,72 @@ def _parse_metric_selector(selector):
     m = _METRIC_RE.match(selector.strip())
     if not m:
         return selector.strip(), {}
-    name = m.group('name')
+    name = m.group("name")
     labels = {}
-    if m.group('labels'):
-        for pair in m.group('labels').split(','):
+    if m.group("labels"):
+        for pair in m.group("labels").split(","):
             pair = pair.strip()
-            if '=' not in pair:
+            if "=" not in pair:
                 continue
-            k, v = pair.split('=', 1)
+            k, v = pair.split("=", 1)
             labels[k.strip()] = v.strip().strip('"').strip("'")
     return name, labels
 
 
 def _parse_doc(doc):
     """Parse an already-loaded YAML document into PromTestGroup objects."""
-    global_interval = parse_duration(doc.get('evaluation_interval', '1m'))
+    global_interval = parse_duration(doc.get("evaluation_interval", "1m"))
     groups = []
 
-    for test_entry in doc.get('tests', []):
-        interval = parse_duration(test_entry['interval']) if 'interval' in test_entry else global_interval
+    for test_entry in doc.get("tests", []):
+        interval = (
+            parse_duration(test_entry["interval"]) if "interval" in test_entry else global_interval
+        )
 
         series_list = []
-        for s in test_entry.get('input_series', []):
-            metric_name, labels = _parse_metric_selector(s['series'])
-            raw = s['values']
+        for s in test_entry.get("input_series", []):
+            metric_name, labels = _parse_metric_selector(s["series"])
+            raw = s["values"]
             vals = expand_values(raw)
-            series_list.append(SeriesData(
-                metric=metric_name,
-                labels=labels,
-                values=vals,
-                interval=interval,
-                raw_values=raw,
-            ))
+            series_list.append(
+                SeriesData(
+                    metric=metric_name,
+                    labels=labels,
+                    values=vals,
+                    interval=interval,
+                    raw_values=raw,
+                )
+            )
 
         eval_points = []
-        for e in test_entry.get('promql_expr_test', []):
-            eval_points.append(EvalPoint(
-                expr=e['expr'],
-                eval_time=parse_duration(e['eval_time']),
-                expected_results=e.get('exp_samples', e.get('exp_result', [])),
-            ))
+        for e in test_entry.get("promql_expr_test", []):
+            eval_points.append(
+                EvalPoint(
+                    expr=e["expr"],
+                    eval_time=parse_duration(e["eval_time"]),
+                    expected_results=e.get("exp_samples", e.get("exp_result", [])),
+                )
+            )
 
         alert_checks = []
-        for a in test_entry.get('alert_rule_test', []):
-            alert_checks.append(AlertCheck(
-                alertname=a['alertname'],
-                eval_time=parse_duration(a['eval_time']),
-                exp_alerts=a.get('exp_alerts', []),
-            ))
+        for a in test_entry.get("alert_rule_test", []):
+            alert_checks.append(
+                AlertCheck(
+                    alertname=a["alertname"],
+                    eval_time=parse_duration(a["eval_time"]),
+                    exp_alerts=a.get("exp_alerts", []),
+                )
+            )
 
-        groups.append(PromTestGroup(
-            interval=interval,
-            series=series_list,
-            eval_points=eval_points,
-            alert_checks=alert_checks,
-            name=test_entry.get('name', ''),
-        ))
+        groups.append(
+            PromTestGroup(
+                interval=interval,
+                series=series_list,
+                eval_points=eval_points,
+                alert_checks=alert_checks,
+                name=test_entry.get("name", ""),
+            )
+        )
 
     return groups
 
@@ -277,6 +289,7 @@ def parse_promtest_string(yaml_string):
 # Visualisation helpers
 # ---------------------------------------------------------------------------
 
+
 def _td_to_minutes(td):
     """Convert timedelta to float minutes."""
     return td.total_seconds() / 60.0
@@ -286,17 +299,17 @@ def _format_duration_short(td):
     """Format a timedelta as a compact string like '5m', '1h30m'."""
     total_s = int(td.total_seconds())
     if total_s == 0:
-        return '0s'
+        return "0s"
     parts = []
     h, rem = divmod(total_s, 3600)
     m, s = divmod(rem, 60)
     if h:
-        parts.append(f'{h}h')
+        parts.append(f"{h}h")
     if m:
-        parts.append(f'{m}m')
+        parts.append(f"{m}m")
     if s:
-        parts.append(f'{s}s')
-    return ''.join(parts)
+        parts.append(f"{s}s")
+    return "".join(parts)
 
 
 def find_gap_clusters(sorted_anchors: np.ndarray, gap_threshold: float) -> List[np.ndarray]:
@@ -355,7 +368,9 @@ def _x_windows_from_gap_clusters(
 
 
 def _promtest_xtick_minutes(
-    xlim_lo: float, xlim_hi: float, interval_min: float,
+    xlim_lo: float,
+    xlim_hi: float,
+    interval_min: float,
 ) -> List[float]:
     """Tick positions (minutes) for promtest x-axes; omit negative offsets.
 
@@ -405,9 +420,9 @@ def _indices_covering_x_window(xs: Sequence[float], x_lo: float, x_hi: float) ->
 
 
 def _promtest_label_layout_validate(layout: str) -> str:
-    allowed = ('readable', 'legacy', 'compact')
+    allowed = ("readable", "legacy", "compact")
     if layout not in allowed:
-        raise ValueError(f'label_layout must be one of {allowed}, not {layout!r}')
+        raise ValueError(f"label_layout must be one of {allowed}, not {layout!r}")
     return layout
 
 
@@ -420,7 +435,7 @@ def _eval_label_half_width_data(
 ) -> float:
     """Half-width of the callout in x data units (symmetric around anchor)."""
     span = max(x_hi - x_lo, 1e-9)
-    lines = text.split('\n')
+    lines = text.split("\n")
     max_line_len = max(len(line) for line in lines)
     w_pt = max_line_len * fontsize * 0.58 + 18.0
     w_pt = min(max(w_pt, fontsize * 10.0), 260.0)
@@ -514,9 +529,9 @@ def _alert_panel_annotation_layout(
     ]
     gap = max(interval_min * 0.12, (xlim_hi - xlim_lo) * 0.004)
     rows, n_tiers = _pack_eval_callout_rows(list(centers), half_ws, gap)
-    gap_pt = 12.0 if label_layout == 'compact' else 15.0
+    gap_pt = 12.0 if label_layout == "compact" else 15.0
     dys = [float(r * gap_pt) for r in rows]
-    has = ['left' if r % 2 == 0 else 'right' for r in rows]
+    has = ["left" if r % 2 == 0 else "right" for r in rows]
     return dys, has, n_tiers
 
 
@@ -529,8 +544,8 @@ def _alert_panel_extra_ylim_top(
     """Extra y-axis span (data coords) above the top alert row for stacked label offsets in points."""
     if max_pack_tiers <= 1:
         return 0.0
-    gap_pt = 12.0 if label_layout == 'compact' else 15.0
-    fs = 7 if label_layout != 'compact' else 6
+    gap_pt = 12.0 if label_layout == "compact" else 15.0
+    fs = 7 if label_layout != "compact" else 6
     max_dy_pt = (max_pack_tiers - 1) * gap_pt + fs * 2.0 + 20.0
     fig = ax.figure
     pos = ax.get_position()
@@ -551,18 +566,22 @@ def _eval_callout_label_metrics(
     half_ws: List[float] = []
     texts: List[str] = []
     for et, label, kind in ann_sorted:
-        if kind == 'eval':
-            text = f'eval: {label}'
+        if kind == "eval":
+            text = f"eval: {label}"
         else:
-            text = f'alert: {label}'
+            text = f"alert: {label}"
         if len(text) > max_chars:
-            text = text[: max_chars - 3] + '...'
+            text = text[: max_chars - 3] + "..."
         time_str = _format_duration_short(timedelta(minutes=et))
-        full = f'{text}\n@ {time_str}'
+        full = f"{text}\n@ {time_str}"
         centers.append(et)
         half_ws.append(
             _eval_label_half_width_data(
-                full, fontsize, xlim_lo, xlim_hi, axis_width_in,
+                full,
+                fontsize,
+                xlim_lo,
+                xlim_hi,
+                axis_width_in,
             ),
         )
         texts.append(full)
@@ -579,15 +598,14 @@ def _max_packed_eval_callout_rows(
 ) -> int:
     """Largest number of callout rows needed in any time column (for figure sizing)."""
     layout = _promtest_label_layout_validate(label_layout)
-    max_chars = 24 if layout == 'compact' else 34
-    fontsize = 5 if layout == 'compact' else 6
+    max_chars = 24 if layout == "compact" else 34
+    fontsize = 5 if layout == "compact" else 6
     sum_r = float(sum(width_ratios)) if width_ratios else 1.0
     subplot_x_frac = 0.76
     max_rows = 0
     for (x_lo, x_hi), wr in zip(windows, width_ratios):
         ann_in = [
-            (et, lab, k) for et, lab, k in eval_annotations
-            if x_lo - 1e-9 <= et <= x_hi + 1e-9
+            (et, lab, k) for et, lab, k in eval_annotations if x_lo - 1e-9 <= et <= x_hi + 1e-9
         ]
         if not ann_in:
             continue
@@ -597,7 +615,12 @@ def _max_packed_eval_callout_rows(
         col_frac = wr / sum_r
         axis_w_in = max(fig_w_in * subplot_x_frac * col_frac, 0.35)
         centers, half_ws, _ = _eval_callout_label_metrics(
-            ann_sorted, max_chars, fontsize, xlim_lo, xlim_hi, axis_w_in,
+            ann_sorted,
+            max_chars,
+            fontsize,
+            xlim_lo,
+            xlim_hi,
+            axis_w_in,
         )
         gap = max(interval_min * 0.12, (xlim_hi - xlim_lo) * 0.004)
         half_infl = [hw * 1.12 for hw in half_ws]
@@ -608,7 +631,7 @@ def _max_packed_eval_callout_rows(
 
 def _eval_callout_gap_pt(layout: str) -> float:
     """Vertical spacing between stacked eval/alert callout rows (points)."""
-    return 17.0 if layout == 'compact' else 18.0
+    return 17.0 if layout == "compact" else 18.0
 
 
 def _eval_callout_reserve_inches(n_rows: int, layout: str) -> float:
@@ -630,10 +653,10 @@ def _apply_promtest_callout_anchor_accents(fig) -> None:
     edge — no inset gap between the thin frame and the accent. Text is padded inward
     separately in ``_annotate_eval_lines``. Must run after ``subplots_adjust``.
     """
-    specs = getattr(fig, '_promtest_callout_annos', None)
+    specs = getattr(fig, "_promtest_callout_annos", None)
     if not specs:
-        if hasattr(fig, '_promtest_callout_annos'):
-            delattr(fig, '_promtest_callout_annos')
+        if hasattr(fig, "_promtest_callout_annos"):
+            delattr(fig, "_promtest_callout_annos")
         return
     fig.canvas.draw()
     renderer = fig.canvas.get_renderer()
@@ -642,25 +665,32 @@ def _apply_promtest_callout_anchor_accents(fig) -> None:
     z_acc = 26
     for _ax, anno, ha, colour in specs:
         bb = anno.get_window_extent(renderer=renderer)
-        x_pix = bb.x0 if ha == 'left' else bb.x1
+        x_pix = bb.x0 if ha == "left" else bb.x1
         p0 = tf_inv.transform((x_pix, bb.y0))
         p1 = tf_inv.transform((x_pix, bb.y1))
         line = plt.Line2D(
-            [p0[0], p1[0]], [p0[1], p1[1]],
+            [p0[0], p1[0]],
+            [p0[1], p1[1]],
             transform=fig.transFigure,
             color=colour,
             linewidth=accent_lw,
-            solid_capstyle='projecting',
+            solid_capstyle="projecting",
             clip_on=False,
             zorder=z_acc,
             antialiased=True,
         )
         fig.add_artist(line)
-    delattr(fig, '_promtest_callout_annos')
+    delattr(fig, "_promtest_callout_annos")
 
 
 def _annotate_transitions(
-    ax, xs, ys, color, *, label_layout: str = 'readable', min_x_gap: Optional[float] = None,
+    ax,
+    xs,
+    ys,
+    color,
+    *,
+    label_layout: str = "readable",
+    min_x_gap: Optional[float] = None,
 ):
     """Value labels at step transitions; optional minimum x-gap to reduce overlap."""
     layout = _promtest_label_layout_validate(label_layout)
@@ -678,7 +708,7 @@ def _annotate_transitions(
             candidates.append((x, y, i == 0, i == len(xs) - 1))
         prev_val = y
 
-    if layout == 'legacy' or not candidates:
+    if layout == "legacy" or not candidates:
         final = [(c[0], c[1]) for c in candidates]
     else:
         if min_x_gap is None:
@@ -693,24 +723,30 @@ def _annotate_transitions(
                 final.append((x, y))
                 last_x = x
 
-    fs = 6 if layout == 'compact' else 7
+    fs = 6 if layout == "compact" else 7
     for k, (x, y) in enumerate(final):
-        if layout == 'legacy':
-            xytext, va = (0, 8), 'bottom'
+        if layout == "legacy":
+            xytext, va = (0, 8), "bottom"
         else:
             if k % 2 == 0:
-                xytext, va = (0, 10), 'bottom'
+                xytext, va = (0, 10), "bottom"
             else:
-                xytext, va = (0, -14), 'top'
+                xytext, va = (0, -14), "top"
         if y == int(y):
             val_str = str(int(y))
         else:
-            val_str = f'{y:.2g}'
+            val_str = f"{y:.2g}"
         ax.annotate(
-            val_str, (x, y),
-            textcoords='offset points', xytext=xytext,
-            ha='center', va=va, fontsize=fs,
-            color=color, fontweight='bold', alpha=0.85,
+            val_str,
+            (x, y),
+            textcoords="offset points",
+            xytext=xytext,
+            ha="center",
+            va=va,
+            fontsize=fs,
+            color=color,
+            fontweight="bold",
+            alpha=0.85,
         )
 
 
@@ -719,7 +755,7 @@ def _annotate_eval_lines(
     annotations,
     cs,
     *,
-    label_layout: str = 'readable',
+    label_layout: str = "readable",
     interval_min: float = 1.0,
 ) -> int:
     """Labels for eval/alert vertical lines; stagger when layout is not legacy.
@@ -732,8 +768,8 @@ def _annotate_eval_lines(
     """
     layout = _promtest_label_layout_validate(label_layout)
     ann_sorted = sorted(annotations, key=lambda t: t[0])
-    max_chars = 24 if layout == 'compact' else 34
-    fontsize = 5 if layout == 'compact' else 6
+    max_chars = 24 if layout == "compact" else 34
+    fontsize = 5 if layout == "compact" else 6
     gap_pt = _eval_callout_gap_pt(layout)
     base_y_pt = 3.0
 
@@ -745,61 +781,82 @@ def _annotate_eval_lines(
     pos = ax.get_position()
     axis_w_in = max(fig.get_figwidth() * pos.width, 0.2)
     centers, half_ws, texts = _eval_callout_label_metrics(
-        ann_sorted, max_chars, fontsize, x0, x1, axis_w_in,
+        ann_sorted,
+        max_chars,
+        fontsize,
+        x0,
+        x1,
+        axis_w_in,
     )
 
     rows: List[int] = [0] * len(ann_sorted)
-    ha_for: List[str] = ['left'] * len(ann_sorted)
+    ha_for: List[str] = ["left"] * len(ann_sorted)
     n_rows = 0
-    if layout != 'legacy':
+    if layout != "legacy":
         gap = max(interval_min * 0.12, (x1 - x0) * 0.004)
         half_infl = [hw * 1.12 for hw in half_ws]
         rows, n_rows = _pack_eval_callout_rows(centers, half_infl, gap)
         for ii in range(len(ann_sorted)):
-            ha_for[ii] = 'left' if rows[ii] % 2 == 0 else 'right'
+            ha_for[ii] = "left" if rows[ii] % 2 == 0 else "right"
 
     for i, (et, label, kind) in enumerate(ann_sorted):
         text = texts[i]
-        colour = cs['eval_line'] if kind == 'eval' else cs['alert_firing']
+        colour = cs["eval_line"] if kind == "eval" else cs["alert_firing"]
 
-        if layout == 'legacy':
+        if layout == "legacy":
             ax.annotate(
-                text, (et, 1.0),
-                xycoords=('data', 'axes fraction'),
-                textcoords='offset points', xytext=(4, -4),
-                ha='left', va='top', fontsize=fontsize, color=colour,
-                fontweight='bold', alpha=0.9,
-                bbox=dict(boxstyle='round,pad=0.25', fc='white',
-                          ec=colour, alpha=0.85, linewidth=0.7),
+                text,
+                (et, 1.0),
+                xycoords=("data", "axes fraction"),
+                textcoords="offset points",
+                xytext=(4, -4),
+                ha="left",
+                va="top",
+                fontsize=fontsize,
+                color=colour,
+                fontweight="bold",
+                alpha=0.9,
+                bbox=dict(
+                    boxstyle="round,pad=0.25", fc="white", ec=colour, alpha=0.85, linewidth=0.7
+                ),
             )
         else:
             row = rows[i]
             ha = ha_for[i]
-            lines = text.split('\n')
-            if ha == 'left':
-                lines[0] = '   ' + lines[0]
+            lines = text.split("\n")
+            if ha == "left":
+                lines[0] = "   " + lines[0]
                 if len(lines) > 1:
-                    lines[1] = '   ' + lines[1]
+                    lines[1] = "   " + lines[1]
             else:
-                lines[0] = lines[0] + '   '
+                lines[0] = lines[0] + "   "
                 if len(lines) > 1:
-                    lines[1] = lines[1] + '   '
-            text = '\n'.join(lines)
+                    lines[1] = lines[1] + "   "
+            text = "\n".join(lines)
             y_off = base_y_pt + row * gap_pt
             anno = ax.annotate(
-                text, (et, 1.0),
-                xycoords=('data', 'axes fraction'),
-                textcoords='offset points', xytext=(0, y_off),
-                ha=ha, va='bottom', fontsize=fontsize, color=colour,
-                fontweight='bold', alpha=0.9, clip_on=False, zorder=25,
-                bbox=dict(boxstyle='round,pad=0.26', fc='white',
-                          ec=colour, alpha=0.92, linewidth=0.42),
+                text,
+                (et, 1.0),
+                xycoords=("data", "axes fraction"),
+                textcoords="offset points",
+                xytext=(0, y_off),
+                ha=ha,
+                va="bottom",
+                fontsize=fontsize,
+                color=colour,
+                fontweight="bold",
+                alpha=0.9,
+                clip_on=False,
+                zorder=25,
+                bbox=dict(
+                    boxstyle="round,pad=0.26", fc="white", ec=colour, alpha=0.92, linewidth=0.42
+                ),
             )
-            acc = getattr(fig, '_promtest_callout_annos', None)
+            acc = getattr(fig, "_promtest_callout_annos", None)
             if acc is not None:
                 acc.append((ax, anno, ha, colour))
 
-    if layout == 'legacy':
+    if layout == "legacy":
         return 0
     return n_rows
 
@@ -824,7 +881,7 @@ def _add_promtest_column_slashes(fig, bottom_axes_row, slash_color: str) -> None
                 transform=fig.transFigure,
                 color=slash_color,
                 linewidth=2.5,
-                solid_capstyle='round',
+                solid_capstyle="round",
                 clip_on=False,
                 zorder=10,
             )
@@ -836,19 +893,25 @@ def _add_promtest_column_slashes(fig, bottom_axes_row, slash_color: str) -> None
 # ---------------------------------------------------------------------------
 
 PROMTEST_COLOR_SCHEME = {
-    'series_colors': [
-        '#0046be', '#e6194b', '#3cb44b', '#f58231',
-        '#911eb4', '#42d4f4', '#f032e6', '#bfef45',
+    "series_colors": [
+        "#0046be",
+        "#e6194b",
+        "#3cb44b",
+        "#f58231",
+        "#911eb4",
+        "#42d4f4",
+        "#f032e6",
+        "#bfef45",
     ],
-    'eval_line': '#e6194b',
-    'alert_pending': '#ffc107',
-    'alert_firing': '#dc3545',
-    'grid': '#e0e0e0',
-    'background': '#fafafa',
-    'text': '#333333',
-    'stale_marker': '#999999',
-    'missing_marker': '#cccccc',
-    'slashes': '#0046be',
+    "eval_line": "#e6194b",
+    "alert_pending": "#ffc107",
+    "alert_firing": "#dc3545",
+    "grid": "#e0e0e0",
+    "background": "#fafafa",
+    "text": "#333333",
+    "stale_marker": "#999999",
+    "missing_marker": "#cccccc",
+    "slashes": "#0046be",
 }
 
 
@@ -862,7 +925,7 @@ def _draw_promtest_time_column(
     eval_annotations: list,
     interval_min: float,
     set_xlabel: bool,
-    label_layout: str = 'readable',
+    label_layout: str = "readable",
 ) -> int:
     """Draw one horizontal time segment (column) of a promtest figure.
 
@@ -873,8 +936,7 @@ def _draw_promtest_time_column(
     n_series = len(group.series)
     has_alerts = bool(group.alert_checks)
 
-    ann_in = [(et, lab, k) for et, lab, k in eval_annotations
-              if x_lo - 1e-9 <= et <= x_hi + 1e-9]
+    ann_in = [(et, lab, k) for et, lab, k in eval_annotations if x_lo - 1e-9 <= et <= x_hi + 1e-9]
 
     x_pad_col = max((x_hi - x_lo) * 0.08, interval_min * 0.5)
     xlim_lo = x_lo - x_pad_col
@@ -882,7 +944,7 @@ def _draw_promtest_time_column(
 
     for si, series in enumerate(group.series):
         ax = column_axes[si]
-        color = cs['series_colors'][si % len(cs['series_colors'])]
+        color = cs["series_colors"][si % len(cs["series_colors"])]
         xs, ys = [], []
         stale_xs = []
         gap_xs = []
@@ -890,7 +952,7 @@ def _draw_promtest_time_column(
             t = _td_to_minutes(series.interval * vi)
             if val is None:
                 gap_xs.append(t)
-            elif val == 'stale':
+            elif val == "stale":
                 stale_xs.append(t)
             else:
                 xs.append(t)
@@ -901,79 +963,111 @@ def _draw_promtest_time_column(
         ys_s = [ys[i] for i in idx] if ys else []
 
         if xs_s:
-            ax.step(xs_s, ys_s, where='post', color=color, linewidth=1.5,
-                    zorder=3)
-            ax.plot(xs_s, ys_s, 'o', color=color, markersize=5, zorder=4)
+            ax.step(xs_s, ys_s, where="post", color=color, linewidth=1.5, zorder=3)
+            ax.plot(xs_s, ys_s, "o", color=color, markersize=5, zorder=4)
 
         stale_in = [t for t in stale_xs if x_lo <= t <= x_hi]
         if stale_in:
-            ax.plot(stale_in, [0] * len(stale_in), 'x',
-                    color=cs['stale_marker'], markersize=8,
-                    markeredgewidth=2, zorder=4)
+            ax.plot(
+                stale_in,
+                [0] * len(stale_in),
+                "x",
+                color=cs["stale_marker"],
+                markersize=8,
+                markeredgewidth=2,
+                zorder=4,
+            )
 
         gap_in = [t for t in gap_xs if x_lo <= t <= x_hi]
         if gap_in:
-            ax.plot(gap_in, [0] * len(gap_in), 's',
-                    color=cs['missing_marker'], markersize=6,
-                    markerfacecolor='none', markeredgewidth=1.5,
-                    zorder=4)
+            ax.plot(
+                gap_in,
+                [0] * len(gap_in),
+                "s",
+                color=cs["missing_marker"],
+                markersize=6,
+                markerfacecolor="none",
+                markeredgewidth=1.5,
+                zorder=4,
+            )
 
         for ep in group.eval_points:
             et = _td_to_minutes(ep.eval_time)
             if x_lo - 1e-9 <= et <= x_hi + 1e-9:
-                ax.axvline(x=et, color=cs['eval_line'], linestyle='--',
-                           linewidth=1.2, alpha=0.7, zorder=2)
+                ax.axvline(
+                    x=et, color=cs["eval_line"], linestyle="--", linewidth=1.2, alpha=0.7, zorder=2
+                )
 
         for ac in group.alert_checks:
             et = _td_to_minutes(ac.eval_time)
             if x_lo - 1e-9 <= et <= x_hi + 1e-9:
-                ax.axvline(x=et, color=cs['alert_firing'], linestyle=':',
-                           linewidth=1.2, alpha=0.6, zorder=2)
+                ax.axvline(
+                    x=et,
+                    color=cs["alert_firing"],
+                    linestyle=":",
+                    linewidth=1.2,
+                    alpha=0.6,
+                    zorder=2,
+                )
 
-        ax.set_ylabel('value', fontsize=8, color='#888888')
+        ax.set_ylabel("value", fontsize=8, color="#888888")
         ax.set_xlim(xlim_lo, xlim_hi)
-        ax.grid(True, alpha=0.3, color=cs['grid'])
-        ax.set_facecolor(cs['background'])
+        ax.grid(True, alpha=0.3, color=cs["grid"])
+        ax.set_facecolor(cs["background"])
 
         subtitle = series.display_name
         if series.raw_values:
             raw_display = series.raw_values
             if len(raw_display) > 60:
-                raw_display = raw_display[:57] + '...'
-            subtitle += f'    values: {raw_display!r}'
+                raw_display = raw_display[:57] + "..."
+            subtitle += f"    values: {raw_display!r}"
         # Top-row series key (metric + values string) sits under the plot so stacked
         # eval/alert callouts (above axes fraction 1) do not cover it.
-        series_key_below = si == 0 and (
-            len(column_axes) > 1 or bool(ann_in)
-        )
+        series_key_below = si == 0 and (len(column_axes) > 1 or bool(ann_in))
         if series_key_below:
             ax.set_title(
-                subtitle, fontsize=8.5, color=cs['text'],
-                loc='left', fontstyle='italic', y=-0.22,
+                subtitle,
+                fontsize=8.5,
+                color=cs["text"],
+                loc="left",
+                fontstyle="italic",
+                y=-0.22,
             )
             ax.title.set_clip_on(False)
         else:
             ax.set_title(
-                subtitle, fontsize=8.5, color=cs['text'],
-                loc='left', fontstyle='italic', pad=4,
+                subtitle,
+                fontsize=8.5,
+                color=cs["text"],
+                loc="left",
+                fontstyle="italic",
+                pad=4,
             )
 
         if xs_s and ys_s:
             x0, x1 = ax.get_xlim()
             span = max(x1 - x0, 1e-9)
-            if label_layout == 'legacy':
+            if label_layout == "legacy":
                 mgap = 0.0
             else:
                 mgap = max(span * 0.035, interval_min * 1.2)
-                if label_layout == 'compact':
+                if label_layout == "compact":
                     mgap *= 1.65
             _annotate_transitions(
-                ax, xs_s, ys_s, color, label_layout=label_layout, min_x_gap=mgap,
+                ax,
+                xs_s,
+                ys_s,
+                color,
+                label_layout=label_layout,
+                min_x_gap=mgap,
             )
 
     if ann_in and n_series > 0:
         eval_callout_rows = _annotate_eval_lines(
-            column_axes[0], ann_in, cs, label_layout=label_layout,
+            column_axes[0],
+            ann_in,
+            cs,
+            label_layout=label_layout,
             interval_min=interval_min,
         )
 
@@ -983,8 +1077,11 @@ def _draw_promtest_time_column(
         alert_y = {name: i for i, name in enumerate(alert_names)}
 
         alert_draw_order = sorted(
-            [ac for ac in group.alert_checks
-             if x_lo - 1e-9 <= _td_to_minutes(ac.eval_time) <= x_hi + 1e-9],
+            [
+                ac
+                for ac in group.alert_checks
+                if x_lo - 1e-9 <= _td_to_minutes(ac.eval_time) <= x_hi + 1e-9
+            ],
             key=lambda a: (_td_to_minutes(a.eval_time), alert_y[a.alertname]),
         )
 
@@ -993,19 +1090,17 @@ def _draw_promtest_time_column(
         fig_alert = ax_alert.figure
         pos_al = ax_alert.get_position()
         axis_w_alert = max(fig_alert.get_figwidth() * pos_al.width, 0.2)
-        fs_alert = 7 if label_layout != 'compact' else 6
+        fs_alert = 7 if label_layout != "compact" else 6
 
         by_row = defaultdict(list)
         for ac in alert_draw_order:
             et = _td_to_minutes(ac.eval_time)
             y = alert_y[ac.alertname]
             is_firing = bool(ac.exp_alerts)
-            label_text = 'FIRING' if is_firing else 'no alerts'
-            label_full = (
-                f'{ac.alertname} @ {_format_duration_short(ac.eval_time)} — {label_text}'
-            )
-            if label_layout == 'compact' and len(label_full) > 42:
-                label_full = label_full[:39] + '...'
+            label_text = "FIRING" if is_firing else "no alerts"
+            label_full = f"{ac.alertname} @ {_format_duration_short(ac.eval_time)} — {label_text}"
+            if label_layout == "compact" and len(label_full) > 42:
+                label_full = label_full[:39] + "..."
             by_row[y].append((ac, et, label_full))
 
         row_plans: List[Tuple[float, list, List[float], List[str]]] = []
@@ -1014,58 +1109,75 @@ def _draw_promtest_time_column(
             bucket = sorted(by_row[y], key=lambda t: t[1])
             centers_b = [t[1] for t in bucket]
             texts_b = [t[2] for t in bucket]
-            if label_layout == 'legacy':
+            if label_layout == "legacy":
                 dys = [0.0] * len(bucket)
-                has = ['left'] * len(bucket)
+                has = ["left"] * len(bucket)
                 nt = 1
             else:
                 dys, has, nt = _alert_panel_annotation_layout(
-                    centers_b, texts_b, fs_alert,
-                    xlim_lo, xlim_hi, axis_w_alert, interval_min,
+                    centers_b,
+                    texts_b,
+                    fs_alert,
+                    xlim_lo,
+                    xlim_hi,
+                    axis_w_alert,
+                    interval_min,
                     label_layout=label_layout,
                 )
             max_tiers = max(max_tiers, nt)
             row_plans.append((y, bucket, dys, has))
 
         extra_y = _alert_panel_extra_ylim_top(
-            ax_alert, len(alert_names), max_tiers, label_layout,
+            ax_alert,
+            len(alert_names),
+            max_tiers,
+            label_layout,
         )
         ax_alert.set_ylim(-0.5, len(alert_names) - 0.5 + extra_y)
 
         for y, bucket, dys, has in row_plans:
             for i, (ac, et, label_full) in enumerate(bucket):
                 is_firing = bool(ac.exp_alerts)
-                color = cs['alert_firing'] if is_firing else cs['alert_pending']
-                marker = 'D' if is_firing else 'o'
-                ax_alert.plot(et, y, marker, color=color, markersize=10,
-                              zorder=4)
+                color = cs["alert_firing"] if is_firing else cs["alert_pending"]
+                marker = "D" if is_firing else "o"
+                ax_alert.plot(et, y, marker, color=color, markersize=10, zorder=4)
                 ha = has[i]
-                if label_layout == 'legacy':
+                if label_layout == "legacy":
                     off_x = 8
                 else:
-                    off_x = 10 if ha == 'left' else -10
+                    off_x = 10 if ha == "left" else -10
                 ax_alert.annotate(
-                    label_full, (et, y),
-                    textcoords='offset points', xytext=(off_x, dys[i]),
-                    ha=ha, va='center', fontsize=fs_alert, color=color,
-                    fontweight='bold', clip_on=True, zorder=5,
-                    bbox=dict(boxstyle='round,pad=0.3', fc='white',
-                              ec=color, alpha=0.85, linewidth=0.8),
+                    label_full,
+                    (et, y),
+                    textcoords="offset points",
+                    xytext=(off_x, dys[i]),
+                    ha=ha,
+                    va="center",
+                    fontsize=fs_alert,
+                    color=color,
+                    fontweight="bold",
+                    clip_on=True,
+                    zorder=5,
+                    bbox=dict(
+                        boxstyle="round,pad=0.3", fc="white", ec=color, alpha=0.85, linewidth=0.8
+                    ),
                 )
 
         for ep in group.eval_points:
             et = _td_to_minutes(ep.eval_time)
             if x_lo - 1e-9 <= et <= x_hi + 1e-9:
-                ax_alert.axvline(x=et, color=cs['eval_line'], linestyle='--',
-                                 linewidth=1.2, alpha=0.7, zorder=2)
+                ax_alert.axvline(
+                    x=et, color=cs["eval_line"], linestyle="--", linewidth=1.2, alpha=0.7, zorder=2
+                )
 
         ax_alert.set_yticks(range(len(alert_names)))
         ax_alert.set_yticklabels(alert_names, fontsize=9)
-        ax_alert.set_ylabel('', fontsize=8)
-        ax_alert.set_title('Alert Checks', fontsize=8.5, color=cs['text'],
-                           loc='left', fontstyle='italic', pad=4)
-        ax_alert.grid(True, alpha=0.3, color=cs['grid'])
-        ax_alert.set_facecolor(cs['background'])
+        ax_alert.set_ylabel("", fontsize=8)
+        ax_alert.set_title(
+            "Alert Checks", fontsize=8.5, color=cs["text"], loc="left", fontstyle="italic", pad=4
+        )
+        ax_alert.grid(True, alpha=0.3, color=cs["grid"])
+        ax_alert.set_facecolor(cs["background"])
 
     bottom_ax = column_axes[-1]
     tick_positions = _promtest_xtick_minutes(xlim_lo, xlim_hi, interval_min)
@@ -1082,17 +1194,26 @@ def _draw_promtest_time_column(
 
     if set_xlabel:
         bottom_ax.set_xlabel(
-            f'Time offset  (interval: {_format_duration_short(group.interval)}, '
-            f'each tick = 1 step)',
-            fontsize=9, color=cs['text'],
+            f"Time offset  (interval: {_format_duration_short(group.interval)}, "
+            f"each tick = 1 step)",
+            fontsize=9,
+            color=cs["text"],
         )
 
     return eval_callout_rows
 
 
-def plot_promtest(groups, figsize=None, show_plot=True, output_file=None,
-                  dpi=150, title=None, color_scheme=None,
-                  break_gap_minutes=None, label_layout='readable'):
+def plot_promtest(
+    groups,
+    figsize=None,
+    show_plot=True,
+    output_file=None,
+    dpi=150,
+    title=None,
+    color_scheme=None,
+    break_gap_minutes=None,
+    label_layout="readable",
+):
     """Visualise parsed promtool test groups.
 
     Parameters
@@ -1131,7 +1252,7 @@ def plot_promtest(groups, figsize=None, show_plot=True, output_file=None,
         multiple time columns exist (series rows, then columns left-to-right).
     """
     if break_gap_minutes is not None and break_gap_minutes <= 0:
-        raise ValueError('break_gap_minutes must be positive when set')
+        raise ValueError("break_gap_minutes must be positive when set")
     _promtest_label_layout_validate(label_layout)
 
     cs = {**PROMTEST_COLOR_SCHEME, **(color_scheme or {})}
@@ -1163,9 +1284,9 @@ def plot_promtest(groups, figsize=None, show_plot=True, output_file=None,
 
         eval_annotations = []
         for ep in group.eval_points:
-            eval_annotations.append((_td_to_minutes(ep.eval_time), ep.expr, 'eval'))
+            eval_annotations.append((_td_to_minutes(ep.eval_time), ep.expr, "eval"))
         for ac in group.alert_checks:
-            eval_annotations.append((_td_to_minutes(ac.eval_time), ac.alertname, 'alert'))
+            eval_annotations.append((_td_to_minutes(ac.eval_time), ac.alertname, "alert"))
 
         interval_min = _td_to_minutes(group.interval)
 
@@ -1176,7 +1297,10 @@ def plot_promtest(groups, figsize=None, show_plot=True, output_file=None,
             for et, _, _ in eval_annotations:
                 anchors.append(float(et))
             windows = _x_windows_from_gap_clusters(
-                anchors, break_gap_minutes, x_max, interval_min,
+                anchors,
+                break_gap_minutes,
+                x_max,
+                interval_min,
             )
 
         n_cols = len(windows)
@@ -1184,13 +1308,17 @@ def plot_promtest(groups, figsize=None, show_plot=True, output_file=None,
         fig_w_scaled = fig_w * (0.65 + 0.35 * n_cols)
 
         packed_eval_rows = 0
-        if label_layout != 'legacy' and eval_annotations:
+        if label_layout != "legacy" and eval_annotations:
             packed_eval_rows = _max_packed_eval_callout_rows(
-                eval_annotations, label_layout, windows, interval_min,
-                fig_w_scaled, ratios,
+                eval_annotations,
+                label_layout,
+                windows,
+                interval_min,
+                fig_w_scaled,
+                ratios,
             )
 
-        if figsize is None and label_layout != 'legacy' and eval_annotations:
+        if figsize is None and label_layout != "legacy" and eval_annotations:
             reserve_in = _eval_callout_reserve_inches(packed_eval_rows, label_layout)
             fig_h = max(fig_h, reserve_in / 0.28)
 
@@ -1199,44 +1327,58 @@ def plot_promtest(groups, figsize=None, show_plot=True, output_file=None,
         max_eval_callout_rows = 0
         if n_cols == 1:
             fig, axs_1d = plt.subplots(
-                n_rows, 1, figsize=(fig_w, fig_h), sharex=True,
-                gridspec_kw={'hspace': 0.52 if n_rows > 1 else 0.45},
+                n_rows,
+                1,
+                figsize=(fig_w, fig_h),
+                sharex=True,
+                gridspec_kw={"hspace": 0.52 if n_rows > 1 else 0.45},
             )
             fig._promtest_callout_annos = []
             if n_rows == 1:
                 axs_1d = [axs_1d]
             col_axes = list(axs_1d)
             max_eval_callout_rows = _draw_promtest_time_column(
-                col_axes, group, windows[0][0], windows[0][1], x_max,
-                cs, eval_annotations, interval_min, set_xlabel=True,
+                col_axes,
+                group,
+                windows[0][0],
+                windows[0][1],
+                x_max,
+                cs,
+                eval_annotations,
+                interval_min,
+                set_xlabel=True,
                 label_layout=label_layout,
             )
             flat_axes = col_axes
             bottom_row_for_slash = [col_axes[-1]]
         else:
             fig, axs_grid = plt.subplots(
-                n_rows, n_cols,
+                n_rows,
+                n_cols,
                 figsize=(fig_w_scaled, fig_h),
-                sharex='col',
+                sharex="col",
                 gridspec_kw={
-                    'hspace': 0.52 if n_rows > 1 else 0.45,
-                    'width_ratios': ratios,
+                    "hspace": 0.52 if n_rows > 1 else 0.45,
+                    "width_ratios": ratios,
                 },
             )
             fig._promtest_callout_annos = []
             axs_arr = np.asarray(axs_grid)
             if axs_arr.ndim == 1:
-                if n_rows == 1:
-                    axs_arr = axs_arr.reshape(1, n_cols)
-                else:
-                    axs_arr = axs_arr.reshape(n_rows, 1)
+                axs_arr = axs_arr.reshape(1, n_cols)
             axs_grid = axs_arr
             bottom_row_for_slash = []
             for j, (x_lo, x_hi) in enumerate(windows):
                 col_axes = [axs_grid[i, j] for i in range(n_rows)]
                 r = _draw_promtest_time_column(
-                    col_axes, group, x_lo, x_hi, x_max,
-                    cs, eval_annotations, interval_min,
+                    col_axes,
+                    group,
+                    x_lo,
+                    x_hi,
+                    x_max,
+                    cs,
+                    eval_annotations,
+                    interval_min,
                     set_xlabel=(j == n_cols - 1),
                     label_layout=label_layout,
                 )
@@ -1248,25 +1390,30 @@ def plot_promtest(groups, figsize=None, show_plot=True, output_file=None,
 
         fig_title = title
         if fig_title is None:
-            fig_title = 'Promtest Timeline'
+            fig_title = "Promtest Timeline"
             if group.name:
-                fig_title += f' — {group.name}'
+                fig_title += f" — {group.name}"
             if len(groups) > 1:
-                fig_title += f' (group {gi + 1}/{len(groups)})'
+                fig_title += f" (group {gi + 1}/{len(groups)})"
         if break_gap_minutes is not None and n_cols > 1:
-            fig_title += f'  (time breaks > {break_gap_minutes:g}m)'
-        fig.suptitle(fig_title, fontsize=14, fontweight='bold', color=cs['text'],
-                     y=0.99)
+            fig_title += f"  (time breaks > {break_gap_minutes:g}m)"
+        fig.suptitle(fig_title, fontsize=14, fontweight="bold", color=cs["text"], y=0.99)
 
-        _add_legend_key(fig, cs, has_evals, has_alerts,
-                        bool(any(s.values and None in s.values for s in group.series)),
-                        bool(any(s.values and 'stale' in s.values for s in group.series)))
+        _add_legend_key(
+            fig,
+            cs,
+            has_evals,
+            has_alerts,
+            bool(any(s.values and None in s.values for s in group.series)),
+            bool(any(s.values and "stale" in s.values for s in group.series)),
+        )
 
-        if label_layout == 'legacy' or not eval_annotations:
+        if label_layout == "legacy" or not eval_annotations:
             top_margin = 0.93
         else:
             reserve_in = _eval_callout_reserve_inches(
-                max_eval_callout_rows, label_layout,
+                max_eval_callout_rows,
+                label_layout,
             )
             top_margin = 1.0 - reserve_in / max(fig_h, 1e-6)
             top_margin = max(0.40, min(0.96, top_margin))
@@ -1280,16 +1427,22 @@ def plot_promtest(groups, figsize=None, show_plot=True, output_file=None,
 
         if n_cols > 1:
             fig.canvas.draw()
-            _add_promtest_column_slashes(fig, bottom_row_for_slash, cs['slashes'])
+            _add_promtest_column_slashes(fig, bottom_row_for_slash, cs["slashes"])
 
         if output_file:
-            suffix = f'_{gi}' if len(groups) > 1 else ''
-            out = output_file.replace('.png', f'{suffix}.png') if len(groups) > 1 else output_file
-            fig.savefig(out, bbox_inches='tight', dpi=dpi)
+            suffix = f"_{gi}" if len(groups) > 1 else ""
+            out = output_file.replace(".png", f"{suffix}.png") if len(groups) > 1 else output_file
+            fig.savefig(out, bbox_inches="tight", dpi=dpi)
 
         if show_plot:
-            if plt.get_backend().lower() in ['tkagg', 'qt5agg', 'macosx', 'wx', 'gtk3agg']:
-                plt.show()
+            if plt.get_backend().lower() in [
+                "tkagg",
+                "qt5agg",
+                "macosx",
+                "wx",
+                "gtk3agg",
+            ]:  # pragma: no cover
+                plt.show()  # pragma: no cover
         else:
             plt.close(fig)
 
@@ -1301,45 +1454,43 @@ def plot_promtest(groups, figsize=None, show_plot=True, output_file=None,
 def _add_legend_key(fig, cs, has_evals, has_alerts, has_gaps, has_stale):
     """Draw a visual legend strip at the bottom of the figure."""
     items = []
-    items.append(('o', cs['series_colors'][0], 'Sample point'))
-    items.append(('_step_', cs['series_colors'][0], 'Step line (value held until next sample)'))
+    items.append(("o", cs["series_colors"][0], "Sample point"))
+    items.append(("_step_", cs["series_colors"][0], "Step line (value held until next sample)"))
     if has_evals:
-        items.append(('--', cs['eval_line'], 'Expression eval checkpoint'))
+        items.append(("--", cs["eval_line"], "Expression eval checkpoint"))
     if has_alerts:
-        items.append(('D', cs['alert_firing'], 'Alert FIRING'))
-        items.append((':', cs['alert_firing'], 'Alert check time'))
+        items.append(("D", cs["alert_firing"], "Alert FIRING"))
+        items.append((":", cs["alert_firing"], "Alert check time"))
     if has_gaps:
-        items.append(('s_empty', cs['missing_marker'], 'Missing sample (gap)'))
+        items.append(("s_empty", cs["missing_marker"], "Missing sample (gap)"))
     if has_stale:
-        items.append(('x', cs['stale_marker'], 'Stale sample'))
+        items.append(("x", cs["stale_marker"], "Stale sample"))
 
     n = len(items)
-    if n == 0:
-        return
-
     legend_ax = fig.add_axes([0.05, 0.01, 0.9, 0.04])
     legend_ax.set_xlim(0, n)
     legend_ax.set_ylim(0, 1)
-    legend_ax.axis('off')
+    legend_ax.axis("off")
 
     for i, (marker, colour, label) in enumerate(items):
         cx = i + 0.15
         cy = 0.5
-        if marker == '--':
-            legend_ax.plot([cx - 0.08, cx + 0.08], [cy, cy], '--',
-                           color=colour, linewidth=1.5)
-        elif marker == ':':
-            legend_ax.plot([cx - 0.08, cx + 0.08], [cy, cy], ':',
-                           color=colour, linewidth=1.5)
-        elif marker == '_step_':
-            legend_ax.plot([cx - 0.08, cx, cx, cx + 0.08],
-                           [cy - 0.15, cy - 0.15, cy + 0.15, cy + 0.15],
-                           '-', color=colour, linewidth=1.5)
-        elif marker == 's_empty':
-            legend_ax.plot(cx, cy, 's', color=colour, markersize=6,
-                           markerfacecolor='none', markeredgewidth=1.5)
+        if marker == "--":
+            legend_ax.plot([cx - 0.08, cx + 0.08], [cy, cy], "--", color=colour, linewidth=1.5)
+        elif marker == ":":
+            legend_ax.plot([cx - 0.08, cx + 0.08], [cy, cy], ":", color=colour, linewidth=1.5)
+        elif marker == "_step_":
+            legend_ax.plot(
+                [cx - 0.08, cx, cx, cx + 0.08],
+                [cy - 0.15, cy - 0.15, cy + 0.15, cy + 0.15],
+                "-",
+                color=colour,
+                linewidth=1.5,
+            )
+        elif marker == "s_empty":
+            legend_ax.plot(
+                cx, cy, "s", color=colour, markersize=6, markerfacecolor="none", markeredgewidth=1.5
+            )
         else:
-            legend_ax.plot(cx, cy, marker, color=colour, markersize=6,
-                           markeredgewidth=1.5)
-        legend_ax.text(cx + 0.18, cy, label, fontsize=7, va='center',
-                       color=cs['text'])
+            legend_ax.plot(cx, cy, marker, color=colour, markersize=6, markeredgewidth=1.5)
+        legend_ax.text(cx + 0.18, cy, label, fontsize=7, va="center", color=cs["text"])

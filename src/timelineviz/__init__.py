@@ -22,28 +22,27 @@ Quick start::
     plot_promtest(groups)
 """
 
-from importlib.metadata import version, PackageNotFoundError
+from importlib.metadata import PackageNotFoundError, version
 
 try:
     __version__ = version("timelineviz")
 except PackageNotFoundError:
     __version__ = "0.0.0.dev0"
 
-from timelineviz.timeline import (
-    plot_timeline,
-    plot_multiple_timelines,
-    plot_event_log_timeline,
-    find_clusters,
-    format_timestamp,
-)
-
 from timelineviz.promtest import (
+    expand_values,
+    find_gap_clusters,
+    parse_duration,
     parse_promtest_file,
     parse_promtest_string,
     plot_promtest,
-    find_gap_clusters,
-    expand_values,
-    parse_duration,
+)
+from timelineviz.timeline import (
+    find_clusters,
+    format_timestamp,
+    plot_event_log_timeline,
+    plot_multiple_timelines,
+    plot_timeline,
 )
 
 __all__ = [
