@@ -55,6 +55,9 @@ timelineviz data.csv --detect-timestamps --output-dir timelines
 # Specify columns explicitly
 timelineviz data.csv --timestamp-columns created_at updated_at completed_at
 
+# Read CSV data from stdin
+cat data.csv | timelineviz --timestamp-columns created_at updated_at completed_at
+
 # Add more visually staggered label bubbles
 timelineviz data.csv --timestamp-columns created_at updated_at completed_at --varying-height
 ```
@@ -85,7 +88,14 @@ Use this when each **row** is one event and times live in a **single column** (t
 timelineviz examples/incident_log.csv --event-log --log-time-column ts \
   --log-label-column message --log-filter-column level \
   --log-include ERROR WARN --output-dir timelines --no-show
+
+# Pipe log rows straight in via stdin
+tail -n 100 logs/development.csv | timelineviz --event-log --log-time-column ts \
+  --log-label-column message --log-filter-column level \
+  --log-include ERROR WARN --output-dir timelines --no-show
 ```
+
+Omit the input path or pass `-` to read from stdin. This works for wide CSV mode, `--event-log`, and `--promtest`.
 
 ```python
 from timelineviz import plot_event_log_timeline

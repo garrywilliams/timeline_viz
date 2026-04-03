@@ -1,3 +1,4 @@
+import io
 import json
 from types import SimpleNamespace
 
@@ -6,6 +7,15 @@ import pytest
 
 import timelineviz.cli as cli_module
 from timelineviz.cli import main, parse_args
+
+
+class _FakeStdin(io.StringIO):
+    def __init__(self, text, is_tty=False):
+        super().__init__(text)
+        self._is_tty = is_tty
+
+    def isatty(self):
+        return self._is_tty
 
 
 def test_parse_args_basic():
@@ -24,6 +34,10 @@ def test_parse_args_basic():
     args = parse_args(["data.csv", "--timestamp-columns", "created_at", "updated_at"])
     assert args.timestamp_columns == ["created_at", "updated_at"]
 
+    # Test omitted input file defaults to stdin
+    args = parse_args([])
+    assert args.csv_file is None
+
 
 def test_parse_args_validation():
     # Test invalid figure size
@@ -37,10 +51,6 @@ def test_parse_args_validation():
     # Test invalid JSON in label mappings
     with pytest.raises(SystemExit):
         parse_args(["data.csv", "--label-mappings", "invalid json"])
-
-    # Test missing required argument
-    with pytest.raises(SystemExit):
-        parse_args([])
 
 
 def test_parse_args_numeric_options():
@@ -167,6 +177,133 @@ def test_main_error_handling(tmp_path):
     pd.DataFrame({"id": [1], "name": ["test"]}).to_csv(no_timestamps, index=False)
     result = main([str(no_timestamps), "--detect-timestamps"])
     assert result == 1
+
+
+def test_main_reads_wide_csv_from_stdin(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        cli_module.sys,
+        "stdin",
+        _FakeStdin("id,timestamp\n1,2024-01-01 10:00:00\n"),
+    )
+    output_dir = tmp_path / "out"
+    result = main(
+        [
+            "--output-dir",
+            str(output_dir),
+            "--timestamp-columns",
+            "timestamp",
+            "--no-show",
+        ]
+    )
+    assert result == 0
+    assert (output_dir / "entity_row_0_timeline.png").is_file()
+
+
+def test_main_reads_wide_csv_from_dash_stdin(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        cli_module.sys,
+        "stdin",
+        _FakeStdin("id,timestamp\n1,2024-01-01 10:00:00\n"),
+    )
+    output_dir = tmp_path / "out"
+    result = main(
+        [
+            "-",
+            "--output-dir",
+            str(output_dir),
+            "--timestamp-columns",
+            "timestamp",
+            "--no-show",
+        ]
+    )
+    assert result == 0
+    assert (output_dir / "entity_row_0_timeline.png").is_file()
+
+
+def test_main_reads_event_log_from_stdin(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        cli_module.sys,
+        "stdin",
+        _FakeStdin(
+            "ts,level,message\n2024-06-01 10:01:00,ERROR,failed\n2024-06-01 10:02:00,WARN,retry\n"
+        ),
+    )
+    output_dir = tmp_path / "out"
+    result = main(
+        [
+            "--event-log",
+            "--log-time-column",
+            "ts",
+            "--log-label-column",
+            "message",
+            "--log-filter-column",
+            "level",
+            "--log-include",
+            "ERROR",
+            "WARN",
+            "--output-dir",
+            str(output_dir),
+            "--no-show",
+        ]
+    )
+    assert result == 0
+    assert (output_dir / "event_log_timeline.png").is_file()
+
+
+def test_main_reads_promtest_from_stdin(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        cli_module.sys,
+        "stdin",
+        _FakeStdin(
+            "evaluation_interval: 1m\n"
+            "tests:\n"
+            "  - interval: 1m\n"
+            "    input_series:\n"
+            "      - series: metric_name\n"
+            "        values: '0+0x1'\n"
+        ),
+    )
+    output_dir = tmp_path / "out"
+    result = main(["--promtest", "--output-dir", str(output_dir), "--no-show"])
+    assert result == 0
+    assert (output_dir / "promtest.png").is_file()
+
+
+def test_main_omitted_input_without_pipe_errors(monkeypatch, capsys):
+    monkeypatch.setattr(cli_module.sys, "stdin", _FakeStdin("", is_tty=True))
+    result = main(["--timestamp-columns", "timestamp", "--no-show"])
+    assert result == 1
+    assert "No input file provided" in capsys.readouterr().err
+
+
+def test_main_label_mappings_file_not_found(capsys):
+    result = main(
+        [
+            "missing.csv",
+            "--timestamp-columns",
+            "timestamp",
+            "--label-mappings",
+            '{"timestamp":"When"}',
+            "--no-show",
+        ]
+    )
+    assert result == 1
+    assert "File 'missing.csv' not found" in capsys.readouterr().err
+
+
+def test_main_label_mappings_stdin_error(monkeypatch, capsys):
+    monkeypatch.setattr(cli_module.sys, "stdin", _FakeStdin("", is_tty=True))
+    result = main(
+        [
+            "--timestamp-columns",
+            "timestamp",
+            "--label-mappings",
+            '{"timestamp":"When"}',
+            "--no-show",
+        ]
+    )
+    assert result == 1
+    assert "No input file provided" in capsys.readouterr().err
 
 
 def test_main_with_all_options(tmp_path):
@@ -854,9 +991,35 @@ def test_run_event_log_unexpected_exception(monkeypatch, capsys):
     def boom(*_args, **_kwargs):
         raise RuntimeError("boom")
 
+    monkeypatch.setattr(
+        cli_module,
+        "_load_csv_input",
+        lambda _input: pd.DataFrame({"ts": ["2024-01-01 10:00:00"]}),
+    )
     monkeypatch.setattr(cli_module, "plot_event_log_timeline", boom)
     assert cli_module._run_event_log(args) == 1
     assert "Error generating event log timeline: boom" in capsys.readouterr().err
+
+
+def test_run_event_log_file_not_found(capsys):
+    args = SimpleNamespace(
+        figsize="15,5",
+        colors=None,
+        output_dir=None,
+        csv_file="missing.csv",
+        log_time_column="ts",
+        log_label_column=None,
+        log_filter_column=None,
+        log_include=None,
+        log_exclude=None,
+        threshold_days=1,
+        point_size=10,
+        varying_height=False,
+        no_show=True,
+        dpi=150,
+    )
+    assert cli_module._run_event_log(args) == 1
+    assert "File 'missing.csv' not found" in capsys.readouterr().err
 
 
 def test_run_promtest_invalid_figsize_falls_back(monkeypatch):
@@ -869,9 +1032,23 @@ def test_run_promtest_invalid_figsize_falls_back(monkeypatch):
         promtest_break_gap_minutes=None,
         promtest_label_layout="readable",
     )
-    monkeypatch.setattr(cli_module, "parse_promtest_file", lambda _path: ["group"])
+    monkeypatch.setattr(cli_module, "_load_promtest_groups", lambda _path: ["group"])
     monkeypatch.setattr(cli_module, "plot_promtest", lambda *_args, **_kwargs: [("fig", [])])
     assert cli_module._run_promtest(args) == 0
+
+
+def test_run_promtest_file_not_found(capsys):
+    args = SimpleNamespace(
+        figsize="15,5",
+        csv_file="missing.yml",
+        output_dir=None,
+        no_show=True,
+        dpi=150,
+        promtest_break_gap_minutes=None,
+        promtest_label_layout="readable",
+    )
+    assert cli_module._run_promtest(args) == 1
+    assert "File 'missing.yml' not found" in capsys.readouterr().err
 
 
 def test_run_promtest_parse_error(monkeypatch, capsys):
@@ -888,7 +1065,7 @@ def test_run_promtest_parse_error(monkeypatch, capsys):
     def boom(_path):
         raise ValueError("bad yaml")
 
-    monkeypatch.setattr(cli_module, "parse_promtest_file", boom)
+    monkeypatch.setattr(cli_module, "_load_promtest_groups", boom)
     assert cli_module._run_promtest(args) == 1
     assert "Error parsing promtest file: bad yaml" in capsys.readouterr().err
 
@@ -903,7 +1080,7 @@ def test_run_promtest_no_groups(monkeypatch, capsys):
         promtest_break_gap_minutes=None,
         promtest_label_layout="readable",
     )
-    monkeypatch.setattr(cli_module, "parse_promtest_file", lambda _path: [])
+    monkeypatch.setattr(cli_module, "_load_promtest_groups", lambda _path: [])
     assert cli_module._run_promtest(args) == 1
     assert "No test groups found" in capsys.readouterr().err
 
@@ -918,7 +1095,7 @@ def test_run_promtest_plot_error(monkeypatch, capsys):
         promtest_break_gap_minutes=None,
         promtest_label_layout="readable",
     )
-    monkeypatch.setattr(cli_module, "parse_promtest_file", lambda _path: ["group"])
+    monkeypatch.setattr(cli_module, "_load_promtest_groups", lambda _path: ["group"])
 
     def boom(*_args, **_kwargs):
         raise RuntimeError("plot failed")
@@ -926,3 +1103,20 @@ def test_run_promtest_plot_error(monkeypatch, capsys):
     monkeypatch.setattr(cli_module, "plot_promtest", boom)
     assert cli_module._run_promtest(args) == 1
     assert "Error generating promtest visualisation: plot failed" in capsys.readouterr().err
+
+
+def test_read_stdin_text_rejects_empty_pipe(monkeypatch):
+    monkeypatch.setattr(cli_module.sys, "stdin", _FakeStdin(""))
+    with pytest.raises(ValueError, match="No input data received on stdin"):
+        cli_module._read_stdin_text()
+
+
+def test_load_csv_input_translates_empty_data_error(monkeypatch):
+    monkeypatch.setattr(cli_module, "_read_stdin_text", lambda: "header_only")
+
+    def raise_empty(*_args, **_kwargs):
+        raise pd.errors.EmptyDataError("no columns")
+
+    monkeypatch.setattr(cli_module.pd, "read_csv", raise_empty)
+    with pytest.raises(ValueError, match="No CSV data received on stdin"):
+        cli_module._load_csv_input("-")

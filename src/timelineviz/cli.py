@@ -6,13 +6,14 @@ from CSV files without writing Python code.
 """
 
 import argparse
+import io
 import json
 import os
 import sys
 
 import pandas as pd
 
-from timelineviz.promtest import parse_promtest_file, plot_promtest
+from timelineviz.promtest import parse_promtest_file, parse_promtest_string, plot_promtest
 from timelineviz.timeline import (
     plot_event_log_timeline,
     plot_multiple_timelines,
@@ -58,7 +59,11 @@ Example usage:
 """,
     )
 
-    parser.add_argument("csv_file", help="CSV file containing timestamp data")
+    parser.add_argument(
+        "csv_file",
+        nargs="?",
+        help="CSV/YAML file containing timeline data; omit or use '-' to read from stdin",
+    )
 
     parser.add_argument(
         "--timestamp-columns", "-t", nargs="+", help="Column names containing timestamps"
@@ -215,11 +220,6 @@ def main(args=None):
 
     args = parse_args(args)
 
-    # Validate input file exists
-    if not os.path.isfile(args.csv_file):
-        print(f"Error: File '{args.csv_file}' not found", file=sys.stderr)
-        return 1
-
     # --- Event log (long-format) mode ---
     if args.event_log:
         return _run_event_log(args)
@@ -239,6 +239,7 @@ def main(args=None):
 
     # Initialize color_scheme
     color_scheme = None
+    input_data = None
 
     # Validate color scheme if provided
     if args.colors:
@@ -268,8 +269,16 @@ def main(args=None):
 
     # Validate label mappings if provided (wide CSV mode only)
     if args.label_mappings and not args.event_log:
-        # Read CSV to get column names
-        df = pd.read_csv(args.csv_file)
+        try:
+            input_data = _load_csv_input(args.csv_file)
+        except FileNotFoundError:
+            print(f"Error: File '{args.csv_file}' not found", file=sys.stderr)
+            return 1
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+        df = input_data if isinstance(input_data, pd.DataFrame) else pd.read_csv(input_data)
         invalid_columns = [col for col in args.label_mappings if col not in df.columns]
         if invalid_columns:
             print(f"Error: Label mappings reference non-existent columns: {invalid_columns}")
@@ -286,8 +295,11 @@ def main(args=None):
 
     # Generate the timelines
     try:
+        if input_data is None:
+            input_data = _load_csv_input(args.csv_file)
+
         processed = plot_multiple_timelines(
-            data=args.csv_file,
+            data=input_data,
             timestamp_columns=args.timestamp_columns,
             id_column=args.id_column,
             detect_timestamps=args.detect_timestamps,
@@ -321,6 +333,47 @@ def main(args=None):
 
         traceback.print_exc()
         return 1
+
+
+def _uses_stdin(input_arg):
+    """Return True when CLI input should be read from stdin."""
+    return input_arg in (None, "-")
+
+
+def _read_stdin_text():
+    """Read piped stdin content with a friendly error for interactive use."""
+    if getattr(sys.stdin, "isatty", lambda: False)():
+        raise ValueError("No input file provided. Pass a file path or pipe data to stdin.")
+
+    text = sys.stdin.read()
+    if not text.strip():
+        raise ValueError("No input data received on stdin.")
+    return text
+
+
+def _load_csv_input(input_arg):
+    """Load CSV input from a path or stdin for CLI use."""
+    if _uses_stdin(input_arg):
+        try:
+            return pd.read_csv(io.StringIO(_read_stdin_text()))
+        except pd.errors.EmptyDataError as e:
+            raise ValueError("No CSV data received on stdin.") from e
+
+    if not os.path.isfile(input_arg):
+        raise FileNotFoundError(input_arg)
+
+    return input_arg
+
+
+def _load_promtest_groups(input_arg):
+    """Load promtest YAML from a path or stdin for CLI use."""
+    if _uses_stdin(input_arg):
+        return parse_promtest_string(_read_stdin_text())
+
+    if not os.path.isfile(input_arg):
+        raise FileNotFoundError(input_arg)
+
+    return parse_promtest_file(input_arg)
 
 
 def _run_event_log(args):
@@ -363,8 +416,9 @@ def _run_event_log(args):
         output_file = os.path.join(args.output_dir, "event_log_timeline.png")
 
     try:
+        input_data = _load_csv_input(args.csv_file)
         fig, _axs = plot_event_log_timeline(
-            data=args.csv_file,
+            data=input_data,
             timestamp_column=args.log_time_column,
             label_column=args.log_label_column,
             filter_column=args.log_filter_column,
@@ -379,6 +433,9 @@ def _run_event_log(args):
             output_file=output_file,
             varying_height=args.varying_height,
         )
+    except FileNotFoundError:
+        print(f"Error: File '{args.csv_file}' not found", file=sys.stderr)
+        return 1
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
@@ -406,7 +463,10 @@ def _run_promtest(args):
         figsize = None
 
     try:
-        groups = parse_promtest_file(args.csv_file)
+        groups = _load_promtest_groups(args.csv_file)
+    except FileNotFoundError:
+        print(f"Error: File '{args.csv_file}' not found", file=sys.stderr)
+        return 1
     except Exception as e:
         print(f"Error parsing promtest file: {e}", file=sys.stderr)
         return 1
