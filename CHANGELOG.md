@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - GitHub Actions release workflow for GitHub Release-driven PyPI publishing with Trusted Publishing.
 - Dependabot configuration for GitHub Actions, `uv`, and `pre-commit` updates.
 - `.pre-commit-config.yaml` and `ruff` tooling for a consistent local developer loop.
+- `varying_height` / `--varying-height` for non-promtest timelines, which staggers event label bubbles at multiple heights above and below the line.
 
 ### Changed
 
