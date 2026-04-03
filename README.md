@@ -97,15 +97,23 @@ tail -n 100 logs/development.csv | timelineviz --event-log --log-time-column ts 
 
 Omit the input path or pass `-` to read from stdin. This works for wide CSV mode, `--event-log`, and `--promtest`.
 
-For plain-text logs, `timelineviz` can also parse `kubectl logs --timestamps` output directly in `--event-log` mode:
+For plain-text logs, `timelineviz` can also parse common timestamp-first log lines directly in `--event-log` mode:
 
 ```bash
 kubectl logs -n mara deploy/mara-webhook-server --tail=80 --timestamps \
-  | timelineviz --event-log --raw-log-format kubectl \
+  | timelineviz --event-log --raw-log-format auto \
     --log-include INFO WARN ERROR --output-dir timelines --no-show
 ```
 
-In raw kubectl mode, `timelineviz` defaults to extracted columns `ts`, `level`, and `message`, so `--log-include` / `--log-exclude` work without any extra preprocessing.
+This also works for many other timestamped logs, for example:
+
+```bash
+tail -n 100 app.log \
+  | timelineviz --event-log --raw-log-format timestamped \
+    --log-include INFO WARN ERROR --output-dir timelines --no-show
+```
+
+In raw log mode, `timelineviz` defaults to extracted columns `ts`, `level`, and `message`, so `--log-include` / `--log-exclude` work without any extra preprocessing. `kubectl` remains available as an explicit format alias.
 
 ```python
 from timelineviz import plot_event_log_timeline

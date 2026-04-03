@@ -58,9 +58,9 @@ Example usage:
     --log-label-column message --log-filter-column level \\
     --log-include ERROR WARN --output-dir out
 
-  # Raw kubectl logs from stdin:
+  # Raw timestamped logs from stdin:
   kubectl logs deploy/my-app --timestamps \\
-    | timelineviz --event-log --raw-log-format kubectl --log-include ERROR WARN
+    | timelineviz --event-log --raw-log-format auto --log-include ERROR WARN
 """,
     )
 
@@ -178,8 +178,10 @@ Example usage:
     )
     parser.add_argument(
         "--raw-log-format",
-        choices=("kubectl",),
-        help="With --event-log: parse plain-text logs instead of CSV input",
+        nargs="?",
+        const="auto",
+        choices=("auto", "timestamped", "kubectl"),
+        help="With --event-log: parse plain-text logs instead of CSV input (default: auto)",
     )
 
     # Parse the arguments
@@ -400,31 +402,62 @@ def _load_text_input(input_arg):
     return text
 
 
-_RAW_KUBECTL_LOG_RE = re.compile(r"^(?P<ts>\S+)\s+(?P<level>[A-Z]+)\s+(?:\|\s*)?(?P<message>.*)$")
+_RAW_TIMESTAMP_PREFIX_RE = re.compile(
+    r"^(?P<ts>"
+    r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:[.,]\d+)?"
+    r"(?:Z|[+-]\d{2}:?\d{2})?"
+    r")(?P<rest>\s+.*)?$"
+)
+_LEVEL_PREFIX_RE = re.compile(
+    r"^\s*(?:\[)?(?P<level>TRACE|DEBUG|INFO|WARN|WARNING|ERROR|CRITICAL|FATAL)(?:\])?"
+    r"(?:\s*[:|,-]\s*|\s+)(?P<message>.*)$",
+    re.IGNORECASE,
+)
 
 
-def _parse_raw_kubectl_logs(text):
-    """Parse `kubectl logs --timestamps` style plain text into a DataFrame."""
+def _normalize_log_level(level):
+    """Normalize parsed log levels for filtering."""
+    normalized = level.strip().upper()
+    if normalized == "WARNING":
+        return "WARN"
+    if normalized == "CRITICAL":
+        return "FATAL"
+    return normalized
+
+
+def _parse_raw_timestamped_logs(text):
+    """Parse common timestamp-first plain-text logs into a DataFrame."""
     rows = []
     for line in text.splitlines():
         line = line.strip()
         if not line:
             continue
 
-        match = _RAW_KUBECTL_LOG_RE.match(line)
-        if not match:
+        ts_match = _RAW_TIMESTAMP_PREFIX_RE.match(line)
+        if not ts_match:
             continue
+
+        rest = (ts_match.group("rest") or "").strip()
+        level = ""
+        message = rest
+
+        level_match = _LEVEL_PREFIX_RE.match(rest)
+        if level_match:
+            level = _normalize_log_level(level_match.group("level"))
+            message = level_match.group("message").strip()
+        elif rest.startswith("|"):
+            message = rest[1:].strip()
 
         rows.append(
             {
-                "ts": match.group("ts"),
-                "level": match.group("level").strip().upper(),
-                "message": match.group("message"),
+                "ts": ts_match.group("ts"),
+                "level": level,
+                "message": message,
             }
         )
 
     if not rows:
-        raise ValueError("No kubectl log lines matched the expected timestamp/level format.")
+        raise ValueError("No timestamped log lines matched the expected timestamp-first format.")
 
     return pd.DataFrame(rows)
 
@@ -434,9 +467,9 @@ def _load_event_log_input(input_arg, raw_log_format=None):
     if raw_log_format is None:
         return _load_csv_input(input_arg)
 
-    if raw_log_format == "kubectl":
+    if raw_log_format in {"auto", "timestamped", "kubectl"}:
         text = _load_text_input(input_arg)
-        return _parse_raw_kubectl_logs(text)
+        return _parse_raw_timestamped_logs(text)
 
     raise ValueError(f"Unsupported raw log format: {raw_log_format}")
 

@@ -83,7 +83,7 @@ def test_parse_args_event_log_requires_time_column():
 
 def test_parse_args_raw_log_format_requires_event_log():
     with pytest.raises(SystemExit):
-        parse_args(["logs.txt", "--raw-log-format", "kubectl"])
+        parse_args(["logs.txt", "--raw-log-format", "auto"])
 
 
 def test_parse_args_event_log_conflicts_with_promtest():
@@ -144,11 +144,11 @@ def test_parse_args_event_log_ok():
 
 
 def test_parse_args_raw_log_event_log_defaults():
-    args = parse_args(["--event-log", "--raw-log-format", "kubectl"])
+    args = parse_args(["--event-log", "--raw-log-format"])
     assert args.log_time_column == "ts"
     assert args.log_label_column == "message"
     assert args.log_filter_column == "level"
-    assert args.raw_log_format == "kubectl"
+    assert args.raw_log_format == "auto"
 
 
 def test_main_basic_functionality(tmp_path):
@@ -277,7 +277,7 @@ def test_main_reads_raw_kubectl_log_from_stdin(monkeypatch, tmp_path):
         [
             "--event-log",
             "--raw-log-format",
-            "kubectl",
+            "auto",
             "--log-label-column",
             "message",
             "--log-filter-column",
@@ -305,7 +305,32 @@ def test_main_reads_raw_kubectl_log_from_file(tmp_path):
             str(log_path),
             "--event-log",
             "--raw-log-format",
-            "kubectl",
+            "auto",
+            "--log-include",
+            "INFO",
+            "--output-dir",
+            str(output_dir),
+            "--no-show",
+        ]
+    )
+    assert result == 0
+    assert (output_dir / "event_log_timeline.png").is_file()
+
+
+def test_main_reads_generic_timestamped_log_from_stdin(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        cli_module.sys,
+        "stdin",
+        _FakeStdin(
+            "2026-04-02 04:21:43,796 INFO app booted\n2026-04-02 04:21:44,123 ERROR app failed\n"
+        ),
+    )
+    output_dir = tmp_path / "out"
+    result = main(
+        [
+            "--event-log",
+            "--raw-log-format",
+            "timestamped",
             "--log-include",
             "INFO",
             "--output-dir",
@@ -345,9 +370,9 @@ def test_main_omitted_input_without_pipe_errors(monkeypatch, capsys):
 
 def test_main_raw_kubectl_log_without_matches(monkeypatch, capsys):
     monkeypatch.setattr(cli_module.sys, "stdin", _FakeStdin("not a kubectl log line\n"))
-    result = main(["--event-log", "--raw-log-format", "kubectl", "--no-show"])
+    result = main(["--event-log", "--raw-log-format", "auto", "--no-show"])
     assert result == 1
-    assert "No kubectl log lines matched" in capsys.readouterr().err
+    assert "No timestamped log lines matched" in capsys.readouterr().err
 
 
 def test_main_label_mappings_file_not_found(capsys):
@@ -1114,8 +1139,8 @@ def test_run_promtest_invalid_figsize_falls_back(monkeypatch):
     assert cli_module._run_promtest(args) == 0
 
 
-def test_parse_raw_kubectl_logs_normalizes_level_and_pipe():
-    df = cli_module._parse_raw_kubectl_logs(
+def test_parse_raw_timestamped_logs_normalizes_level_and_pipe():
+    df = cli_module._parse_raw_timestamped_logs(
         "2026-04-02T04:21:43.796757292Z INFO     | first message\n"
         "2026-04-02T04:21:44.796757292Z WARN second message\n"
     )
@@ -1133,16 +1158,68 @@ def test_parse_raw_kubectl_logs_normalizes_level_and_pipe():
     ]
 
 
-def test_parse_raw_kubectl_logs_rejects_unmatched_text():
-    with pytest.raises(ValueError, match="No kubectl log lines matched"):
-        cli_module._parse_raw_kubectl_logs("hello world\nstill not logs\n")
+def test_parse_raw_timestamped_logs_rejects_unmatched_text():
+    with pytest.raises(ValueError, match="No timestamped log lines matched"):
+        cli_module._parse_raw_timestamped_logs("hello world\nstill not logs\n")
 
 
-def test_parse_raw_kubectl_logs_skips_blank_lines():
-    df = cli_module._parse_raw_kubectl_logs(
+def test_parse_raw_timestamped_logs_skips_blank_lines():
+    df = cli_module._parse_raw_timestamped_logs(
         "\n2026-04-02T04:21:43.796757292Z INFO | first message\n\n"
     )
     assert df["level"].tolist() == ["INFO"]
+
+
+def test_parse_raw_timestamped_logs_handles_no_level():
+    df = cli_module._parse_raw_timestamped_logs(
+        "2026-04-02T04:21:43.796757292Z request completed successfully\n"
+    )
+    assert df.to_dict(orient="records") == [
+        {
+            "ts": "2026-04-02T04:21:43.796757292Z",
+            "level": "",
+            "message": "request completed successfully",
+        }
+    ]
+
+
+def test_parse_raw_timestamped_logs_handles_pipe_without_level():
+    df = cli_module._parse_raw_timestamped_logs(
+        "2026-04-02T04:21:43.796757292Z | request completed successfully\n"
+    )
+    assert df.to_dict(orient="records") == [
+        {
+            "ts": "2026-04-02T04:21:43.796757292Z",
+            "level": "",
+            "message": "request completed successfully",
+        }
+    ]
+
+
+def test_parse_raw_timestamped_logs_handles_bracketed_level():
+    df = cli_module._parse_raw_timestamped_logs(
+        "2026-04-02 04:21:43,796 [WARNING] cache warming slowly\n"
+    )
+    assert df.to_dict(orient="records") == [
+        {
+            "ts": "2026-04-02 04:21:43,796",
+            "level": "WARN",
+            "message": "cache warming slowly",
+        }
+    ]
+
+
+def test_parse_raw_timestamped_logs_normalizes_critical_to_fatal():
+    df = cli_module._parse_raw_timestamped_logs(
+        "2026-04-02 04:21:43,796 CRITICAL cache warming failed\n"
+    )
+    assert df.to_dict(orient="records") == [
+        {
+            "ts": "2026-04-02 04:21:43,796",
+            "level": "FATAL",
+            "message": "cache warming failed",
+        }
+    ]
 
 
 def test_load_text_input_file_not_found():
