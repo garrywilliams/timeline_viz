@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-04-03
+
 ### Added
 
 - GitHub Actions CI workflow for linting, multi-version tests, packaging validation, and a Windows smoke test.
