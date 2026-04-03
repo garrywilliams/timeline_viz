@@ -4,16 +4,28 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
     open-pull-requests-limit: 5
 
   - package-ecosystem: "uv"
     directory: "/"
     schedule:
       interval: "monthly"
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
     open-pull-requests-limit: 5
 
   - package-ecosystem: "pre-commit"
     directory: "/"
     schedule:
       interval: "monthly"
+    groups:
+      pre-commit-hooks:
+        patterns:
+          - "*"
     open-pull-requests-limit: 5
