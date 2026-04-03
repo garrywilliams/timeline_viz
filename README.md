@@ -115,6 +115,16 @@ tail -n 100 app.log \
 
 In raw log mode, `timelineviz` defaults to extracted columns `ts`, `level`, and `message`, so `--log-include` / `--log-exclude` work without any extra preprocessing. `kubectl` remains available as an explicit format alias.
 
+Checked-in raw log fixtures:
+- [`examples/raw_kubectl_logs.log`](https://github.com/garrywilliams/timeline_viz/blob/main/examples/raw_kubectl_logs.log)
+- [`examples/raw_timestamped_app.log`](https://github.com/garrywilliams/timeline_viz/blob/main/examples/raw_timestamped_app.log)
+
+Example outputs from those fixtures:
+
+![Raw kubectl-style log timeline](https://raw.githubusercontent.com/garrywilliams/timeline_viz/main/images/raw_kubectl_log_timeline.png)
+
+![Generic timestamped log timeline](https://raw.githubusercontent.com/garrywilliams/timeline_viz/main/images/raw_timestamped_log_timeline.png)
+
 ```python
 from timelineviz import plot_event_log_timeline
 

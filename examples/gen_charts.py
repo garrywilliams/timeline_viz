@@ -1,4 +1,4 @@
-"""Generate example promtest charts for documentation.
+"""Generate example promtest and log charts for documentation.
 
 Run from the repo root:
     uv run python examples/gen_charts.py
@@ -14,6 +14,8 @@ Writes to ``images/``:
 - ``event_log_timeline.png`` — long-format log sample (ERROR/WARN only)
 - ``event_log_timeline_breaks.png`` — denser long-format sample with varying-height
   labels and multiple time breaks
+- ``raw_kubectl_log_timeline.png`` — raw kubectl-style timestamped logs via CLI parser
+- ``raw_timestamped_log_timeline.png`` — generic timestamp-first application logs
 """
 
 import os
@@ -21,6 +23,7 @@ import os
 import matplotlib
 
 matplotlib.use("Agg")
+from timelineviz.cli import _load_event_log_input
 from timelineviz.promtest import parse_promtest_file, parse_promtest_string, plot_promtest
 from timelineviz.timeline import plot_event_log_timeline
 
@@ -183,3 +186,37 @@ plot_event_log_timeline(
     figsize=(15, 5),
 )
 print("Saved event_log_timeline_breaks.png")
+
+plot_event_log_timeline(
+    _load_event_log_input(os.path.join(EXAMPLES, "raw_kubectl_logs.log"), raw_log_format="kubectl"),
+    timestamp_column="ts",
+    label_column="message",
+    filter_column="level",
+    include_values=["WARN", "ERROR"],
+    threshold_days=0.1,
+    varying_height=True,
+    title="Raw kubectl-style logs: WARN and ERROR incident slices",
+    show_plot=False,
+    output_file=os.path.join(OUT_DIR, "raw_kubectl_log_timeline.png"),
+    dpi=150,
+    figsize=(15, 5),
+)
+print("Saved raw_kubectl_log_timeline.png")
+
+plot_event_log_timeline(
+    _load_event_log_input(
+        os.path.join(EXAMPLES, "raw_timestamped_app.log"), raw_log_format="timestamped"
+    ),
+    timestamp_column="ts",
+    label_column="message",
+    filter_column="level",
+    include_values=["INFO", "WARN", "ERROR", "FATAL"],
+    threshold_days=0.1,
+    varying_height=True,
+    title="Generic timestamped logs: application lifecycle and failure recovery",
+    show_plot=False,
+    output_file=os.path.join(OUT_DIR, "raw_timestamped_log_timeline.png"),
+    dpi=150,
+    figsize=(15, 5),
+)
+print("Saved raw_timestamped_log_timeline.png")

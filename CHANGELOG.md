@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - CLI stdin support: omit the input path or pass `-` to read CSV/YAML content from stdin in wide CSV mode, `--event-log`, or `--promtest`.
 - Raw log parsing for `--event-log` with `--raw-log-format auto` / `timestamped` / `kubectl`, so common timestamp-first logs can be piped directly into `timelineviz` without an intermediate CSV transform.
+- `examples/raw_kubectl_logs.log` and `examples/raw_timestamped_app.log` plus rendered image assets to show what raw-log timelines look like in practice.
 
 ## [0.4.0] - 2026-04-03
 
