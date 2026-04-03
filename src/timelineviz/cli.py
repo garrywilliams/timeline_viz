@@ -9,6 +9,7 @@ import argparse
 import io
 import json
 import os
+import re
 import sys
 
 import pandas as pd
@@ -56,6 +57,10 @@ Example usage:
   timelineviz incident.csv --event-log --log-time-column ts \\
     --log-label-column message --log-filter-column level \\
     --log-include ERROR WARN --output-dir out
+
+  # Raw kubectl logs from stdin:
+  kubectl logs deploy/my-app --timestamps \\
+    | timelineviz --event-log --raw-log-format kubectl --log-include ERROR WARN
 """,
     )
 
@@ -171,6 +176,11 @@ Example usage:
         metavar="VALUE",
         help="Drop rows where the filter column equals one of these values",
     )
+    parser.add_argument(
+        "--raw-log-format",
+        choices=("kubectl",),
+        help="With --event-log: parse plain-text logs instead of CSV input",
+    )
 
     # Parse the arguments
     args = parser.parse_args(args)
@@ -196,11 +206,20 @@ Example usage:
 
     if args.event_log and args.promtest:
         parser.error("--event-log cannot be combined with --promtest")
+    if args.raw_log_format and not args.event_log:
+        parser.error("--raw-log-format requires --event-log")
     if args.promtest_break_gap_minutes is not None:
         if not args.promtest:
             parser.error("--promtest-break-gap requires --promtest")
         if args.promtest_break_gap_minutes <= 0:
             parser.error("--promtest-break-gap must be positive")
+    if args.raw_log_format:
+        if args.log_time_column is None:
+            args.log_time_column = "ts"
+        if args.log_label_column is None:
+            args.log_label_column = "message"
+        if args.log_filter_column is None:
+            args.log_filter_column = "level"
     if args.event_log and not args.log_time_column:
         parser.error("--event-log requires --log-time-column")
 
@@ -365,6 +384,63 @@ def _load_csv_input(input_arg):
     return input_arg
 
 
+def _load_text_input(input_arg):
+    """Load plain-text input from a path or stdin for CLI use."""
+    if _uses_stdin(input_arg):
+        return _read_stdin_text()
+
+    if not os.path.isfile(input_arg):
+        raise FileNotFoundError(input_arg)
+
+    with open(input_arg, encoding="utf-8") as f:
+        text = f.read()
+
+    if not text.strip():
+        raise ValueError(f"No input data found in '{input_arg}'.")
+    return text
+
+
+_RAW_KUBECTL_LOG_RE = re.compile(r"^(?P<ts>\S+)\s+(?P<level>[A-Z]+)\s+(?:\|\s*)?(?P<message>.*)$")
+
+
+def _parse_raw_kubectl_logs(text):
+    """Parse `kubectl logs --timestamps` style plain text into a DataFrame."""
+    rows = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+
+        match = _RAW_KUBECTL_LOG_RE.match(line)
+        if not match:
+            continue
+
+        rows.append(
+            {
+                "ts": match.group("ts"),
+                "level": match.group("level").strip().upper(),
+                "message": match.group("message"),
+            }
+        )
+
+    if not rows:
+        raise ValueError("No kubectl log lines matched the expected timestamp/level format.")
+
+    return pd.DataFrame(rows)
+
+
+def _load_event_log_input(input_arg, raw_log_format=None):
+    """Load event-log input from CSV or supported raw-log formats."""
+    if raw_log_format is None:
+        return _load_csv_input(input_arg)
+
+    if raw_log_format == "kubectl":
+        text = _load_text_input(input_arg)
+        return _parse_raw_kubectl_logs(text)
+
+    raise ValueError(f"Unsupported raw log format: {raw_log_format}")
+
+
 def _load_promtest_groups(input_arg):
     """Load promtest YAML from a path or stdin for CLI use."""
     if _uses_stdin(input_arg):
@@ -416,7 +492,7 @@ def _run_event_log(args):
         output_file = os.path.join(args.output_dir, "event_log_timeline.png")
 
     try:
-        input_data = _load_csv_input(args.csv_file)
+        input_data = _load_event_log_input(args.csv_file, raw_log_format=args.raw_log_format)
         fig, _axs = plot_event_log_timeline(
             data=input_data,
             timestamp_column=args.log_time_column,
