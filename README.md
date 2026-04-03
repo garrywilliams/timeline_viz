@@ -100,7 +100,7 @@ Omit the input path or pass `-` to read from stdin. This works for wide CSV mode
 For plain-text logs, `timelineviz` can also parse common timestamp-first log lines directly in `--event-log` mode:
 
 ```bash
-kubectl logs -n mara deploy/mara-webhook-server --tail=80 --timestamps \
+kubectl logs -n app-namespace deploy/my-service --tail=80 --timestamps \
   | timelineviz --event-log --raw-log-format auto \
     --log-include INFO WARN ERROR --output-dir timelines --no-show
 ```
