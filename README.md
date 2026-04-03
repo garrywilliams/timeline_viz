@@ -54,6 +54,9 @@ timelineviz data.csv --detect-timestamps --output-dir timelines
 
 # Specify columns explicitly
 timelineviz data.csv --timestamp-columns created_at updated_at completed_at
+
+# Add more visually staggered label bubbles
+timelineviz data.csv --timestamp-columns created_at updated_at completed_at --varying-height
 ```
 
 ```python
@@ -93,6 +96,7 @@ plot_event_log_timeline(
     label_column="message",
     filter_column="level",
     include_values=["ERROR", "WARN"],
+    varying_height=True,
     output_file="incident_timeline.png",
     show_plot=False,
 )
@@ -173,6 +177,7 @@ The model can **redesign** the information as an infographic while you **verify*
 | `timestamp_columns` | Columns containing timestamp data to visualise |
 | `id_column` | Column that uniquely identifies each entity |
 | `threshold_days` | Time gap (in days) that triggers a timeline break |
+| `varying_height` | Stagger labels above/below the line at varying heights for a more visually layered layout |
 | `entity_name` | Type name for titles (e.g. "Patient", "Order") |
 | `label_mappings` | Custom display names for timestamp columns |
 | `color_scheme` | Dictionary of colour overrides |

@@ -98,6 +98,12 @@ Example usage:
 
     parser.add_argument("--point-size", type=int, default=10, help="Size of the event points")
 
+    parser.add_argument(
+        "--varying-height",
+        action="store_true",
+        help="Stagger non-promtest event labels at varying heights above/below the timeline",
+    )
+
     parser.add_argument("--colors", "-c", help="JSON string with custom color scheme")
 
     parser.add_argument("--label-mappings", "-l", help="JSON string with custom label mappings")
@@ -296,6 +302,7 @@ def main(args=None):
             label_mappings=args.label_mappings,
             remove_suffixes=args.remove_suffixes,
             entity_name=args.entity_name,
+            varying_height=args.varying_height,
         )
 
         if not processed:
@@ -370,6 +377,7 @@ def _run_event_log(args):
             show_plot=not args.no_show,
             dpi=args.dpi,
             output_file=output_file,
+            varying_height=args.varying_height,
         )
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)

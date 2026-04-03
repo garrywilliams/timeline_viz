@@ -557,6 +557,50 @@ def test_plot_timeline_empty_series():
     assert ax is None
 
 
+def test_plot_timeline_varying_height_default_is_uniform():
+    data = pd.Series(
+        {
+            "event1": pd.Timestamp("2024-01-01 10:00:00"),
+            "event2": pd.Timestamp("2024-01-01 10:01:00"),
+            "event3": pd.Timestamp("2024-01-01 10:02:00"),
+            "event4": pd.Timestamp("2024-01-01 10:03:00"),
+            "event5": pd.Timestamp("2024-01-01 10:04:00"),
+            "event6": pd.Timestamp("2024-01-01 10:05:00"),
+        }
+    )
+    fig, axs = plot_timeline(
+        data,
+        timestamp_columns=["event1", "event2", "event3", "event4", "event5", "event6"],
+        show_plot=False,
+    )
+    heights = {round(abs(text.xy[1]), 2) for text in axs[0].texts}
+    assert heights == {0.8}
+    plt.close(fig)
+
+
+def test_plot_timeline_varying_height_uses_multiple_levels():
+    data = pd.Series(
+        {
+            "event1": pd.Timestamp("2024-01-01 10:00:00"),
+            "event2": pd.Timestamp("2024-01-01 10:01:00"),
+            "event3": pd.Timestamp("2024-01-01 10:02:00"),
+            "event4": pd.Timestamp("2024-01-01 10:03:00"),
+            "event5": pd.Timestamp("2024-01-01 10:04:00"),
+            "event6": pd.Timestamp("2024-01-01 10:05:00"),
+        }
+    )
+    fig, axs = plot_timeline(
+        data,
+        timestamp_columns=["event1", "event2", "event3", "event4", "event5", "event6"],
+        varying_height=True,
+        show_plot=False,
+    )
+    heights = {round(abs(text.xy[1]), 2) for text in axs[0].texts}
+    assert len(heights) > 1
+    assert 0.8 in heights
+    plt.close(fig)
+
+
 def test_plot_sorted_events_no_clusters(monkeypatch):
     import timelineviz.timeline as timeline_module
 
@@ -585,6 +629,32 @@ def test_plot_multiple_timelines_invalid_threshold():
 def test_plot_event_log_timeline_invalid_data_type():
     with pytest.raises(ValueError):
         plot_event_log_timeline(123, timestamp_column="ts", show_plot=False)
+
+
+def test_plot_event_log_timeline_varying_height_uses_multiple_levels():
+    df = pd.DataFrame(
+        {
+            "ts": [
+                datetime(2024, 6, 1, 10, 0, 0),
+                datetime(2024, 6, 1, 10, 1, 0),
+                datetime(2024, 6, 1, 10, 2, 0),
+                datetime(2024, 6, 1, 10, 3, 0),
+                datetime(2024, 6, 1, 10, 4, 0),
+                datetime(2024, 6, 1, 10, 5, 0),
+            ],
+            "message": ["a", "b", "c", "d", "e", "f"],
+        }
+    )
+    fig, axs = plot_event_log_timeline(
+        df,
+        timestamp_column="ts",
+        label_column="message",
+        varying_height=True,
+        show_plot=False,
+    )
+    heights = {round(abs(text.xy[1]), 2) for text in axs[0].texts}
+    assert len(heights) > 1
+    plt.close(fig)
 
 
 def test_plot_multiple_timelines_combines_specified_and_detected_columns(monkeypatch):

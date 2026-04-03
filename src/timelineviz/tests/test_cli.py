@@ -54,6 +54,7 @@ def test_parse_args_numeric_options():
             "5",
             "--point-size",
             "12",
+            "--varying-height",
             "--dpi",
             "300",
         ]
@@ -61,6 +62,7 @@ def test_parse_args_numeric_options():
     assert args.max_entities == 10
     assert args.threshold_days == 5
     assert args.point_size == 12
+    assert args.varying_height is True
     assert args.dpi == 300
 
 
@@ -123,6 +125,7 @@ def test_parse_args_event_log_ok():
     assert args.log_filter_column == "level"
     assert args.log_include == ["ERROR", "WARN"]
     assert args.log_exclude == ["DEBUG"]
+    assert args.varying_height is False
 
 
 def test_main_basic_functionality(tmp_path):
@@ -822,6 +825,7 @@ def test_run_event_log_invalid_color_scheme(capsys):
         log_exclude=None,
         threshold_days=1,
         point_size=10,
+        varying_height=False,
         no_show=True,
         dpi=150,
     )
@@ -842,6 +846,7 @@ def test_run_event_log_unexpected_exception(monkeypatch, capsys):
         log_exclude=None,
         threshold_days=1,
         point_size=10,
+        varying_height=False,
         no_show=True,
         dpi=150,
     )

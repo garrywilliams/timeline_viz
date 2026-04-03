@@ -26,6 +26,9 @@ DEFAULT_COLOR_SCHEME = {
     "title": "#0046be",  # Best Buy blue - title
 }
 
+DEFAULT_LABEL_HEIGHT = 0.8
+VARYING_LABEL_HEIGHTS = [0.8, 1.05, 1.3, 1.55]
+
 
 def clean_column_name(column_name, remove_suffixes=None):
     """
@@ -139,6 +142,7 @@ def _plot_sorted_events(
     show_plot=True,
     output_file=None,
     dpi=150,
+    varying_height=False,
 ):
     """Render a timeline from chronologically sorted timestamps and per-point labels."""
     if color_scheme is None:
@@ -183,13 +187,19 @@ def _plot_sorted_events(
             zorder=3,
         )
 
+        max_text_abs_y = DEFAULT_LABEL_HEIGHT
         for j, (date_num, idx) in enumerate(zip(cluster, indices)):
             date = mdates.num2date(date_num)
             col_label = labels[idx]
             time_label = format_timestamp(date)
             label = f"{col_label}\n{time_label}"
-            y_offset = 0.4 if j % 2 == 0 else -0.4
-            text_y = y_offset * 2
+            sign = 1 if j % 2 == 0 else -1
+            if varying_height:
+                height = VARYING_LABEL_HEIGHTS[(j // 2) % len(VARYING_LABEL_HEIGHTS)]
+            else:
+                height = DEFAULT_LABEL_HEIGHT
+            text_y = sign * height
+            max_text_abs_y = max(max_text_abs_y, abs(text_y))
             ax.plot(
                 [date_num, date_num],
                 [0, text_y],
@@ -208,10 +218,10 @@ def _plot_sorted_events(
             ax.annotate(
                 label,
                 xy=(date_num, text_y),
-                xytext=(0, 5 if y_offset > 0 else -5),
+                xytext=(0, 5 if sign > 0 else -5),
                 textcoords="offset points",
                 ha="center",
-                va="bottom" if y_offset > 0 else "top",
+                va="bottom" if sign > 0 else "top",
                 bbox=bbox_props,
                 fontsize=9,
             )
@@ -220,7 +230,8 @@ def _plot_sorted_events(
         ax.set_xticks([min(cluster), max(cluster)])
         ax.spines["bottom"].set_position(("data", 0))
         plt.setp(ax.xaxis.get_majorticklabels(), rotation=date_rotation, ha="right")
-        ax.set_ylim(-1.2, 1.2)
+        y_limit = max(1.2, max_text_abs_y + 0.4)
+        ax.set_ylim(-y_limit, y_limit)
         ax.set_yticks([])
         ax.spines["left"].set_visible(False)
         ax.spines["right"].set_visible(False)
@@ -297,6 +308,7 @@ def plot_timeline(
     show_plot=True,
     output_file=None,
     dpi=150,
+    varying_height=False,
 ):
     """
     Plot a timeline of events based on timestamp columns.
@@ -332,6 +344,9 @@ def plot_timeline(
         Path to save the plot image. If None, image is not saved
     dpi : int, default=150
         Resolution for saved image
+    varying_height : bool, default=False
+        If True, alternate labels above and below the line at varying heights
+        for a more visually staggered layout.
 
     Returns:
     --------
@@ -405,6 +420,7 @@ def plot_timeline(
         show_plot=show_plot,
         output_file=output_file,
         dpi=dpi,
+        varying_height=varying_height,
     )
 
 
@@ -425,6 +441,7 @@ def plot_event_log_timeline(
     show_plot=True,
     output_file=None,
     dpi=150,
+    varying_height=False,
 ):
     """
     Plot a timeline from long-format (log-style) data: one timestamp column, many rows.
@@ -452,7 +469,7 @@ def plot_event_log_timeline(
     entity_id : str, optional
         Shown in the default title after "Event log - Entity …".
     threshold_days, figsize, point_size, date_rotation, color_scheme, title,
-    show_plot, output_file, dpi
+    show_plot, output_file, dpi, varying_height
         Same as :func:`plot_timeline`.
 
     Returns
@@ -523,6 +540,7 @@ def plot_event_log_timeline(
         show_plot=show_plot,
         output_file=output_file,
         dpi=dpi,
+        varying_height=varying_height,
     )
 
 
@@ -542,6 +560,7 @@ def plot_multiple_timelines(
     label_mappings=None,
     remove_suffixes=None,
     entity_name="Entity",
+    varying_height=False,
 ):
     """
     Plot timelines for multiple entities from a DataFrame or CSV file.
@@ -578,6 +597,9 @@ def plot_multiple_timelines(
         List of suffixes to remove from column names when creating labels
     entity_name : str, default='Entity'
         Name to use for entities in titles (e.g., 'Patient', 'Order', 'User')
+    varying_height : bool, default=False
+        If True, alternate labels above and below the line at varying heights
+        for a more visually staggered layout.
 
     Returns:
     --------
@@ -665,6 +687,7 @@ def plot_multiple_timelines(
             show_plot=show_plots,
             output_file=output_file,
             dpi=dpi,
+            varying_height=varying_height,
         )
 
         if fig is not None:
