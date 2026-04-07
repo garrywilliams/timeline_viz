@@ -466,6 +466,7 @@ class TestPlotPromtest:
             assert len(ticks) <= 5
         finally:
             import matplotlib.pyplot as plt
+
             plt.close(fig)
 
     def test_series_only(self):

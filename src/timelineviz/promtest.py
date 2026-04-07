@@ -1222,7 +1222,7 @@ def plot_promtest(
     color_scheme=None,
     break_gap_minutes=None,
     label_layout="readable",
-    max_ticks: int = 12
+    max_ticks: int = 12,
 ):
     """Visualise parsed promtool test groups.
 
@@ -1269,7 +1269,7 @@ def plot_promtest(
     results = []
 
     if max_ticks <= 0:
-        raise ValueError('max_ticks must be positive')
+        raise ValueError("max_ticks must be positive")
 
     for gi, group in enumerate(groups):
         n_series = len(group.series)
