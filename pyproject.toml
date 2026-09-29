@@ -56,6 +56,10 @@ path = "src/timelineviz/_version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/timelineviz"]
+core-metadata-version = "2.4"
+
+[tool.hatch.build.targets.sdist]
+core-metadata-version = "2.4"
 
 [tool.pytest.ini_options]
 testpaths = ["src/timelineviz/tests"]
