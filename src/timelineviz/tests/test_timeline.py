@@ -160,8 +160,7 @@ def test_find_clusters():
     empty_clusters, empty_indices = find_clusters([], threshold_days=1)
     assert isinstance(empty_clusters, list)
     assert isinstance(empty_indices, list)
-    # The implementation returns [[], []] for empty input
-    assert all(isinstance(x, list) for x in empty_indices)
+    assert empty_clusters == [] and empty_indices == []
 
     # Test single value
     single_clusters, single_indices = find_clusters([1.0], threshold_days=1)
@@ -573,8 +572,8 @@ def test_plot_timeline_varying_height_default_is_uniform():
         timestamp_columns=["event1", "event2", "event3", "event4", "event5", "event6"],
         show_plot=False,
     )
-    heights = {round(abs(text.xy[1]), 2) for text in axs[0].texts}
-    assert heights == {0.8}
+    heights = {round(abs(text.get_position()[1]), 1) for text in axs[0].texts}
+    assert len(heights) == 1  # well-spaced labels all sit on the first track
     plt.close(fig)
 
 
@@ -595,23 +594,9 @@ def test_plot_timeline_varying_height_uses_multiple_levels():
         varying_height=True,
         show_plot=False,
     )
-    heights = {round(abs(text.xy[1]), 2) for text in axs[0].texts}
+    heights = {round(abs(text.get_position()[1]), 1) for text in axs[0].texts}
     assert len(heights) > 1
-    assert 0.8 in heights
     plt.close(fig)
-
-
-def test_plot_sorted_events_no_clusters(monkeypatch):
-    import timelineviz.timeline as timeline_module
-
-    monkeypatch.setattr(timeline_module, "find_clusters", lambda *_args, **_kwargs: ([], []))
-    fig, ax = _plot_sorted_events(
-        [pd.Timestamp("2024-01-01")],
-        ["event"],
-        show_plot=False,
-    )
-    assert fig is None
-    assert ax is None
 
 
 def test_plot_multiple_timelines_invalid_threshold():
@@ -652,7 +637,7 @@ def test_plot_event_log_timeline_varying_height_uses_multiple_levels():
         varying_height=True,
         show_plot=False,
     )
-    heights = {round(abs(text.xy[1]), 2) for text in axs[0].texts}
+    heights = {round(abs(text.get_position()[1]), 1) for text in axs[0].texts}
     assert len(heights) > 1
     plt.close(fig)
 
@@ -919,7 +904,7 @@ def test_plot_timeline_applies_partial_color_scheme():
         color_scheme={"title": "#aa0000", "label_bg": "#00bb00", "point_face": "#0000cc"},
         show_plot=False,
     )
-    assert to_hex(fig._suptitle.get_color()) == "#aa0000"
+    assert to_hex(fig.texts[-1].get_color()) == "#aa0000"  # title
     assert to_hex(axs[0].texts[0].get_bbox_patch().get_facecolor()) == "#00bb00"
     points = [ln for ln in axs[0].lines if ln.get_marker() == "o"]
     assert to_hex(points[0].get_markerfacecolor()) == "#0000cc"

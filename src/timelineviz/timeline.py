@@ -1,135 +1,38 @@
 """
-Core timeline visualization functionality.
+Public plotting API for event timelines.
 
-This module contains the main functions for creating generic timeline visualizations
-for any type of timestamp data.
+These functions keep their long-standing signatures but are now thin wrappers:
+input is turned into a :class:`~timelineviz.model.Timeline`, laid out by
+:mod:`timelineviz.layout` and drawn by :mod:`timelineviz.render_mpl`.
 """
 
 import os
 
-import matplotlib.dates as mdates
-import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 
-from timelineviz.utils import (
-    detect_timestamp_columns,
-    parse_timestamps,
-    resolve_color_scheme,
-    show_or_close,
+from timelineviz.layout import find_clusters
+from timelineviz.model import (
+    Event,
+    Timeline,
+    load_dataframe,
+    timeline_from_event_log,
+    timeline_from_wide,
 )
+from timelineviz.render_mpl import format_timestamp, render_timeline
+from timelineviz.utils import clean_column_name, create_color_scheme, detect_timestamp_columns
 
-# Default color scheme - Best Buy brand colors
-DEFAULT_COLOR_SCHEME = {
-    "line": "#0046be",  # Best Buy blue - timeline
-    "point_edge": "#0046be",  # Best Buy blue - point border
-    "point_face": "#ffe000",  # Best Buy yellow - point fill
-    "connector": "#0046be",  # Best Buy blue - connector lines
-    "label_bg": "#f5f5f5",  # Light gray - label background
-    "label_edge": "#0046be",  # Best Buy blue - label border
-    "slashes": "#0046be",  # Best Buy blue - timeline breaks
-    "title": "#0046be",  # Best Buy blue - title
-}
+# Default colour scheme (blue line, yellow points). Kept for backwards compatibility.
+DEFAULT_COLOR_SCHEME = create_color_scheme()
 
-DEFAULT_LABEL_HEIGHT = 0.8
-VARYING_LABEL_HEIGHTS = [0.8, 1.05, 1.3, 1.55]
-
-
-def clean_column_name(column_name, remove_suffixes=None):
-    """
-    Convert column names to human-readable labels.
-
-    Parameters:
-    -----------
-    column_name : str
-        Original column name
-    remove_suffixes : list of str, optional
-        Suffixes to remove from column names (e.g., ['_utc', '_at'])
-
-    Returns:
-    --------
-    str
-        Clean, human-readable label
-    """
-    clean_name = column_name
-
-    # Remove specified suffixes
-    if remove_suffixes:
-        for suffix in remove_suffixes:
-            if clean_name.endswith(suffix):
-                clean_name = clean_name[: -len(suffix)]
-                break
-
-    # Replace underscores and hyphens with spaces
-    clean_name = clean_name.replace("_", " ").replace("-", " ")
-
-    # Title case the result
-    return clean_name.title()
-
-
-def find_clusters(dates_num, threshold_days=30):
-    """
-    Find clusters of timestamps based on time gaps.
-
-    Parameters:
-    -----------
-    dates_num : array-like
-        Dates in matplotlib numerical format
-    threshold_days : float
-        Number of days gap to consider as a break in timeline
-
-    Returns:
-    --------
-    clusters : list of arrays
-        List of clusters of dates
-    cluster_indices : list of lists
-        List of lists of indices corresponding to original dates
-    """
-    if len(dates_num) <= 1:
-        return [dates_num], [[0]] if len(dates_num) == 1 else [[], []]
-
-    # Convert threshold to numerical date units (days)
-    threshold = threshold_days
-
-    # Calculate gaps between consecutive dates
-    gaps = np.diff(dates_num)
-
-    # Find indices where gaps exceed threshold
-    break_indices = np.where(gaps > threshold)[0]
-
-    # Create clusters
-    clusters = []
-    cluster_indices = []
-    start_idx = 0
-
-    for idx in break_indices:
-        cluster_dates = dates_num[start_idx : idx + 1]
-        clusters.append(cluster_dates)
-        cluster_indices.append(list(range(start_idx, idx + 1)))
-        start_idx = idx + 1
-
-    # Add final cluster
-    clusters.append(dates_num[start_idx:])
-    cluster_indices.append(list(range(start_idx, len(dates_num))))
-
-    return clusters, cluster_indices
-
-
-def format_timestamp(dt):
-    """
-    Format timestamp for label display with milliseconds.
-
-    Parameters:
-    -----------
-    dt : datetime
-        Datetime object to format
-
-    Returns:
-    --------
-    str
-        Formatted timestamp string with milliseconds
-    """
-    return dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]  # truncate to milliseconds
+__all__ = [
+    "DEFAULT_COLOR_SCHEME",
+    "clean_column_name",
+    "find_clusters",
+    "format_timestamp",
+    "plot_event_log_timeline",
+    "plot_multiple_timelines",
+    "plot_timeline",
+]
 
 
 def _plot_sorted_events(
@@ -138,9 +41,9 @@ def _plot_sorted_events(
     *,
     entity_id=None,
     threshold_days=30,
-    figsize=(15, 5),
+    figsize=None,
     point_size=8,
-    date_rotation=45,
+    date_rotation=0,
     color_scheme=None,
     title=None,
     title_default_prefix="Timeline",
@@ -149,142 +52,33 @@ def _plot_sorted_events(
     dpi=150,
     varying_height=False,
 ):
-    """Render a timeline from chronologically sorted timestamps and per-point labels."""
-    color_scheme = resolve_color_scheme(color_scheme)
-
+    """Render chronologically sorted timestamps with per-point labels."""
     if not timestamps or not labels or len(timestamps) != len(labels):
         print("No valid events to plot")
         return None, None
-
-    dates_num = mdates.date2num(timestamps)
-    clusters, cluster_indices = find_clusters(dates_num, threshold_days)
-    n_clusters = len(clusters)
-
-    if n_clusters == 0:
-        print(f"No valid clusters to plot for entity {entity_id}")
-        return None, None
-
-    fig, axs = plt.subplots(
-        1,
-        n_clusters,
-        figsize=figsize,
-        gridspec_kw={"width_ratios": [len(c) for c in clusters]},
-    )
-    if n_clusters == 1:
-        axs = [axs]
-
-    plt.subplots_adjust(wspace=0.1)
-
-    for ax, cluster, indices in zip(axs, clusters, cluster_indices):
-        time_range = max(cluster) - min(cluster)
-        padding = time_range * 0.15 if len(cluster) > 1 else 0.1
-        ax.set_xlim(min(cluster) - padding, max(cluster) + padding)
-        ax.axhline(y=0, color=color_scheme["line"], linewidth=2.0, zorder=1)
-        ax.plot(
-            cluster,
-            np.zeros_like(cluster),
-            "o",
-            color=color_scheme["point_edge"],
-            markersize=point_size,
-            markerfacecolor=color_scheme["point_face"],
-            markeredgewidth=1.5,
-            zorder=3,
-        )
-
-        max_text_abs_y = DEFAULT_LABEL_HEIGHT
-        for j, (date_num, idx) in enumerate(zip(cluster, indices)):
-            date = mdates.num2date(date_num)
-            col_label = labels[idx]
-            time_label = format_timestamp(date)
-            label = f"{col_label}\n{time_label}"
-            sign = 1 if j % 2 == 0 else -1
-            if varying_height:
-                height = VARYING_LABEL_HEIGHTS[(j // 2) % len(VARYING_LABEL_HEIGHTS)]
-            else:
-                height = DEFAULT_LABEL_HEIGHT
-            text_y = sign * height
-            max_text_abs_y = max(max_text_abs_y, abs(text_y))
-            ax.plot(
-                [date_num, date_num],
-                [0, text_y],
-                "-",
-                color=color_scheme["connector"],
-                linewidth=1.2,
-                alpha=0.8,
-                zorder=2,
-            )
-            bbox_props = dict(
-                boxstyle="round,pad=0.5",
-                fc=color_scheme["label_bg"],
-                ec=color_scheme["label_edge"],
-                alpha=0.9,
-            )
-            ax.annotate(
-                label,
-                xy=(date_num, text_y),
-                xytext=(0, 5 if sign > 0 else -5),
-                textcoords="offset points",
-                ha="center",
-                va="bottom" if sign > 0 else "top",
-                bbox=bbox_props,
-                fontsize=9,
-            )
-
-        ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M:%S"))
-        ax.set_xticks([min(cluster), max(cluster)])
-        ax.spines["bottom"].set_position(("data", 0))
-        plt.setp(ax.xaxis.get_majorticklabels(), rotation=date_rotation, ha="right")
-        y_limit = max(1.2, max_text_abs_y + 0.4)
-        ax.set_ylim(-y_limit, y_limit)
-        ax.set_yticks([])
-        ax.spines["left"].set_visible(False)
-        ax.spines["right"].set_visible(False)
-        ax.spines["top"].set_visible(False)
-
-    plt.tight_layout()
-
-    for i in range(n_clusters - 1):
-        right_pos = axs[i].get_position().x1
-        left_pos = axs[i + 1].get_position().x0
-        mid_pos = (right_pos + left_pos) / 2
-        y_center = 0.5
-        slash_height = 0.05
-        slash_gap = 0.015
-        for offset in [-slash_gap / 2, slash_gap / 2]:
-            x_mid = mid_pos + offset
-            slash = plt.Line2D(
-                [x_mid - slash_height / 6, x_mid + slash_height / 6],
-                [y_center - slash_height / 2, y_center + slash_height / 2],
-                transform=fig.transFigure,
-                color=color_scheme["slashes"],
-                linewidth=2.5,
-                solid_capstyle="round",
-                clip_on=False,
-                zorder=10,
-            )
-            fig.add_artist(slash)
 
     if title is None:
         title = title_default_prefix
         if entity_id:
             title += f" - Entity {entity_id}"
 
-    plt.suptitle(
-        title,
-        fontsize=16,
-        fontweight="bold",
-        x=0.02,
-        ha="left",
-        color=color_scheme.get("title", "#0046be"),
+    timeline = Timeline(
+        [Event(t, lab) for t, lab in zip(timestamps, labels)],
+        title=title,
+        entity_id=entity_id,
     )
-
-    if output_file:
-        fig.savefig(output_file, bbox_inches="tight", dpi=dpi)
-        print(f"Saved timeline to {output_file}")
-
-    show_or_close(fig, show_plot)
-
-    return fig, axs
+    return render_timeline(
+        timeline,
+        threshold_days=threshold_days,
+        figsize=figsize,
+        point_size=point_size,
+        date_rotation=date_rotation,
+        color_scheme=color_scheme,
+        varying_height=varying_height,
+        output_file=output_file,
+        dpi=dpi,
+        show_plot=show_plot,
+    )
 
 
 def plot_timeline(
@@ -292,9 +86,9 @@ def plot_timeline(
     timestamp_columns=None,
     entity_id=None,
     threshold_days=30,
-    figsize=(15, 5),
+    figsize=None,
     point_size=8,
-    date_rotation=45,
+    date_rotation=0,
     color_scheme=None,
     title=None,
     label_mappings=None,
@@ -307,100 +101,72 @@ def plot_timeline(
     """
     Plot a timeline of events based on timestamp columns.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     data : pandas.DataFrame or pandas.Series
         Data containing timestamp columns. A Series is one row. All rows of a
         DataFrame are treated as a single entity: every non-null value in each
         timestamp column becomes a point.
     timestamp_columns : list, optional
-        List of column names containing timestamps to include in timeline
-        If None, will attempt to auto-detect timestamp columns
+        Columns to plot. If None, timestamp columns are auto-detected by name.
     entity_id : str, optional
-        ID of entity for plot title
+        Entity ID shown in the default title.
     threshold_days : float, default=30
-        Number of days gap to consider as a break in timeline
-    figsize : tuple, default=(15, 5)
-        Size of the figure in inches
+        Gaps longer than this split the timeline into panels, with a break mark
+        labelled with the time skipped.
+    figsize : tuple, optional
+        ``None`` (default) sizes the figure to fit its labels at 15in wide.
+        ``(width, None)`` fixes only the width; ``(width, height)`` fixes both.
     point_size : int, default=8
-        Size of the event points
-    date_rotation : int, default=45
-        Rotation angle for date labels
+        Marker size of event points.
+    date_rotation : int, default=0
+        Rotation of the time-axis tick labels.
     color_scheme : dict, optional
-        Custom color scheme. If None, uses default Best Buy colors
+        Colour overrides; any subset of the keys in ``DEFAULT_COLOR_SCHEME``.
     title : str, optional
-        Custom title for the plot. If None, uses "Timeline - Entity {id}"
+        Plot title. Defaults to ``"Timeline - Entity {id}"``.
     label_mappings : dict, optional
-        Custom mappings from column names to display labels
+        Column name → display label.
     remove_suffixes : list, optional
-        List of suffixes to remove from column names when creating labels
+        Suffixes stripped from column names to make labels
+        (default ``_utc``, ``_at``, ``_time``, ``_date``).
     show_plot : bool, default=True
-        Whether to display the plot
+        Show the figure (GUI backends); otherwise it is closed after saving.
     output_file : str, optional
-        Path to save the plot image. If None, image is not saved
+        Save path; the extension picks the format (``.png``, ``.svg``, ``.pdf``).
     dpi : int, default=150
-        Resolution for saved image
+        Resolution for raster output.
     varying_height : bool, default=False
-        If True, alternate labels above and below the line at varying heights
-        for a more visually staggered layout.
+        Stagger labels over several heights even where they would fit lower.
+        Labels never overlap either way.
 
-    Returns:
-    --------
+    Returns
+    -------
     fig : matplotlib.figure.Figure
-        The figure object containing the timeline
     axs : list of matplotlib.axes.Axes
-        The axes objects in the figure
+        One axes per time panel. ``(None, None)`` if there is nothing to plot.
     """
-    # Default suffixes to remove when creating labels
-    if remove_suffixes is None:
-        remove_suffixes = ["_utc", "_at", "_time", "_date"]
-
-    # Convert Series to DataFrame if necessary
-    if isinstance(data, pd.Series):
-        data = pd.DataFrame([data])
-
-    # Auto-detect timestamp columns if not specified
     if timestamp_columns is None:
-        timestamp_columns = detect_timestamp_columns(data)
-
+        frame = pd.DataFrame([data]) if isinstance(data, pd.Series) else data
+        timestamp_columns = detect_timestamp_columns(frame)
     if not timestamp_columns:
         print("No timestamp columns found or specified")
         return None, None
 
-    # Collect every non-null value in each timestamp column. All rows of ``data``
-    # are treated as one entity, so an entity spread over several rows (e.g. one
-    # row per visit) contributes all of its events, not just the first row's.
-    timestamps = []
-    labels = []
-
-    for col in timestamp_columns:
-        if col not in data.columns:
-            continue
-        present = data.loc[data[col].notna(), [col]]
-        if present.empty:
-            continue
-
-        if label_mappings and col in label_mappings:
-            label = label_mappings[col]
-        else:
-            label = clean_column_name(col, remove_suffixes)
-
-        for ts in parse_timestamps(present, col, normalize_tz=True):
-            timestamps.append(ts)
-            labels.append(label)
-
-    if not timestamps:
+    timeline = timeline_from_wide(
+        data,
+        timestamp_columns,
+        label_mappings=label_mappings,
+        remove_suffixes=remove_suffixes,
+        entity_id=entity_id,
+    )
+    if not timeline.events:
         print(f"No valid timestamps found for entity {entity_id}")
         return None, None
 
-    # Sort timestamps chronologically
-    sorted_indices = np.argsort(timestamps)
-    timestamps = [timestamps[i] for i in sorted_indices]
-    labels = [labels[i] for i in sorted_indices]
-
     return _plot_sorted_events(
-        timestamps,
-        labels,
+        timeline.times,
+        timeline.labels,
         entity_id=entity_id,
         threshold_days=threshold_days,
         figsize=figsize,
@@ -425,9 +191,9 @@ def plot_event_log_timeline(
     exclude_values=None,
     entity_id=None,
     threshold_days=30,
-    figsize=(15, 5),
+    figsize=None,
     point_size=8,
-    date_rotation=45,
+    date_rotation=0,
     color_scheme=None,
     title=None,
     show_plot=True,
@@ -469,58 +235,25 @@ def plot_event_log_timeline(
     fig, axs
         Same as :func:`plot_timeline`.
     """
-    if isinstance(data, str):
-        df = pd.read_csv(data)
-    elif isinstance(data, pd.DataFrame):
-        df = data
-    else:
-        raise ValueError(f"data must be a DataFrame or path to CSV, not {type(data)}")
-
-    if timestamp_column not in df.columns:
-        raise ValueError(f"timestamp_column {timestamp_column!r} not found in columns")
-
-    if label_column is not None and label_column not in df.columns:
-        raise ValueError(f"label_column {label_column!r} not found in columns")
-
-    working = df.copy()
-
-    if filter_column is not None and filter_column not in working.columns:
-        raise ValueError(f"filter_column {filter_column!r} not found in columns")
-
-    if include_values is not None:
-        if filter_column is None:
-            raise ValueError("filter_column is required when include_values is set")
-        working = working[working[filter_column].isin(include_values)]
-
-    if exclude_values is not None:
-        if filter_column is None:
-            raise ValueError("filter_column is required when exclude_values is set")
-        working = working[~working[filter_column].isin(exclude_values)]
-
-    if working.empty:
-        print("No rows left after filtering")
+    timeline = timeline_from_event_log(
+        data,
+        timestamp_column,
+        label_column=label_column,
+        filter_column=filter_column,
+        include_values=include_values,
+        exclude_values=exclude_values,
+        entity_id=entity_id,
+    )
+    if not timeline.events:
+        print("No events left after filtering and parsing timestamps")
         return None, None
-
-    ts = parse_timestamps(working, timestamp_column, normalize_tz=True, errors="coerce")
-    working = working.assign(_event_ts=ts)
-    working = working[working["_event_ts"].notna()].sort_values("_event_ts")
-
-    if working.empty:
-        print("No valid timestamps after parsing")
-        return None, None
-
-    timestamps = working["_event_ts"].tolist()
-    if label_column is not None:
-        labels = working[label_column].astype(str).tolist()
-    else:
-        labels = [f"Event {i + 1}" for i in range(len(working))]
 
     if threshold_days <= 0:
         raise ValueError("threshold_days must be positive")
 
     return _plot_sorted_events(
-        timestamps,
-        labels,
+        timeline.times,
+        timeline.labels,
         entity_id=entity_id,
         threshold_days=threshold_days,
         figsize=figsize,
@@ -544,7 +277,7 @@ def plot_multiple_timelines(
     output_dir=None,
     max_entities=None,
     threshold_days=1,
-    figsize=(15, 5),
+    figsize=None,
     point_size=10,
     color_scheme=None,
     show_plots=True,
@@ -553,73 +286,53 @@ def plot_multiple_timelines(
     remove_suffixes=None,
     entity_name="Entity",
     varying_height=False,
+    output_format="png",
 ):
     """
     Plot timelines for multiple entities from a DataFrame or CSV file.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     data : str or pandas.DataFrame
-        Either a path to CSV file or a pandas DataFrame containing event data
+        Path to a CSV file or a DataFrame.
     timestamp_columns : list, optional
-        List of column names containing timestamps to include in timeline
+        Columns containing timestamps.
     id_column : str, optional
-        Column name for entity identifier. If None, uses row index
+        Entity identifier column. If None, each row is its own entity.
     detect_timestamps : bool, default=False
-        If True, automatically detect timestamp columns
+        Also auto-detect timestamp columns by name.
     output_dir : str, optional
-        Directory to save timeline images. If None, doesn't save images
+        Directory to save images to.
     max_entities : int, optional
-        Maximum number of entities to plot. If None, plots all entities
+        Plot at most this many entities.
     threshold_days : float, default=1
-        Number of days gap to consider as a break in timeline
-    figsize : tuple, default=(15, 5)
-        Size of the figure in inches
-    point_size : int, default=10
-        Size of the event points
-    color_scheme : dict, optional
-        Custom color scheme. If None, uses default Best Buy colors
+        Gap that splits a timeline into panels.
+    figsize, point_size, color_scheme, dpi, label_mappings, remove_suffixes, varying_height
+        See :func:`plot_timeline`.
     show_plots : bool, default=True
-        Whether to display the plots
-    dpi : int, default=150
-        Resolution for saved images
-    label_mappings : dict, optional
-        Custom mappings from column names to display labels
-    remove_suffixes : list, optional
-        List of suffixes to remove from column names when creating labels
+        Show each figure.
     entity_name : str, default='Entity'
-        Name to use for entities in titles (e.g., 'Patient', 'Order', 'User')
-    varying_height : bool, default=False
-        If True, alternate labels above and below the line at varying heights
-        for a more visually staggered layout.
+        Entity noun used in titles and filenames (e.g. 'Patient', 'Order').
+    output_format : str, default='png'
+        File extension for saved images, e.g. ``'png'``, ``'svg'``, ``'pdf'``.
 
-    Returns:
-    --------
-    processed_entities : list
-        List of entity IDs that were successfully processed
+    Returns
+    -------
+    list of str
+        IDs of entities that were plotted.
     """
-    # Handle input data
-    if isinstance(data, str):
-        df = pd.read_csv(data)
-    elif isinstance(data, pd.DataFrame):
-        df = data
-    else:
-        raise ValueError(f"data must be a DataFrame or path to CSV, not {type(data)}")
+    df = load_dataframe(data)
 
-    # Create output directory if it doesn't exist
     if output_dir and not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    # Identify timestamp columns if needed
     if detect_timestamps:
         detected_columns = detect_timestamp_columns(df)
         if not detected_columns:
             print("No timestamp columns detected in the CSV file")
             return []
-
         if timestamp_columns:
-            # Combine specified and detected columns
-            timestamp_columns = list(set(timestamp_columns + detected_columns))
+            timestamp_columns = list(dict.fromkeys(list(timestamp_columns) + detected_columns))
         else:
             timestamp_columns = detected_columns
 
@@ -627,22 +340,17 @@ def plot_multiple_timelines(
         print("No timestamp columns specified or detected")
         return []
 
-    # Use row index as entity ID if no id_column specified
-    entity_ids = df.index.tolist() if id_column is None else df[id_column].unique()
-
-    # Limit the number of entities if specified
-    if max_entities:
-        entity_ids = entity_ids[:max_entities]
-
-    processed_entities = []
-
-    # Validate threshold_days
     if threshold_days <= 0:
         raise ValueError("threshold_days must be positive")
 
-    # Plot for each entity
+    entity_ids = df.index.tolist() if id_column is None else df[id_column].unique()
+    if max_entities:
+        entity_ids = entity_ids[:max_entities]
+
+    ext = output_format.lstrip(".").lower()
+    processed_entities = []
+
     for entity_id in entity_ids:
-        # Filter to get this entity's data
         if id_column:
             entity_data = df[df[id_column] == entity_id]
             entity_id_str = str(entity_id)
@@ -650,22 +358,18 @@ def plot_multiple_timelines(
             entity_data = df.iloc[[entity_id]]
             entity_id_str = f"row_{entity_id}"
 
-        # Skip if no data
         if len(entity_data) == 0:
             print(f"No data found for {entity_name.lower()} {entity_id}")
             continue
 
-        # Generate output file path if needed
         output_file = None
         if output_dir:
             safe_id = "".join(c if c.isalnum() else "_" for c in entity_id_str)
-            output_file = os.path.join(output_dir, f"{entity_name.lower()}_{safe_id}_timeline.png")
+            output_file = os.path.join(
+                output_dir, f"{entity_name.lower()}_{safe_id}_timeline.{ext}"
+            )
 
-        # Custom title with entity name
-        title = f"{entity_name} Timeline - {entity_id_str}"
-
-        # Plot the timeline
-        fig, axs = plot_timeline(
+        fig, _axs = plot_timeline(
             entity_data,
             timestamp_columns,
             entity_id=entity_id_str,
@@ -673,7 +377,7 @@ def plot_multiple_timelines(
             figsize=figsize,
             point_size=point_size,
             color_scheme=color_scheme,
-            title=title,
+            title=f"{entity_name} Timeline - {entity_id_str}",
             label_mappings=label_mappings,
             remove_suffixes=remove_suffixes,
             show_plot=show_plots,
@@ -684,11 +388,7 @@ def plot_multiple_timelines(
 
         if fig is not None:
             processed_entities.append(entity_id_str)
-
             if output_file:
                 print(f"Saved timeline for {entity_name.lower()} {entity_id_str} to {output_file}")
-
-            if not show_plots:
-                plt.close(fig)
 
     return processed_entities
