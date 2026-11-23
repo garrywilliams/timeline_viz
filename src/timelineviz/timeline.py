@@ -12,7 +12,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from timelineviz.utils import detect_timestamp_columns, parse_timestamps
+from timelineviz.utils import (
+    detect_timestamp_columns,
+    parse_timestamps,
+    resolve_color_scheme,
+)
 
 # Default color scheme - Best Buy brand colors
 DEFAULT_COLOR_SCHEME = {
@@ -145,8 +149,7 @@ def _plot_sorted_events(
     varying_height=False,
 ):
     """Render a timeline from chronologically sorted timestamps and per-point labels."""
-    if color_scheme is None:
-        color_scheme = DEFAULT_COLOR_SCHEME
+    color_scheme = resolve_color_scheme(color_scheme)
 
     if not timestamps or not labels or len(timestamps) != len(labels):
         print("No valid events to plot")
@@ -355,10 +358,6 @@ def plot_timeline(
     axs : list of matplotlib.axes.Axes
         The axes objects in the figure
     """
-    # Use default color scheme if none provided
-    if color_scheme is None:
-        color_scheme = DEFAULT_COLOR_SCHEME
-
     # Default suffixes to remove when creating labels
     if remove_suffixes is None:
         remove_suffixes = ["_utc", "_at", "_time", "_date"]

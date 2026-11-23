@@ -732,20 +732,37 @@ def test_main_color_scheme_validation(tmp_path):
     csv_path = tmp_path / "test.csv"
     pd.DataFrame({"ts": ["2024-01-01"]}).to_csv(csv_path, index=False)
 
-    # Test missing required color keys
-    incomplete_colors = {
-        "line": "#FF0000"  # Missing other required keys
-    }
+    # A partial scheme is fine: unspecified keys fall back to defaults
+    partial_colors = {"line": "#FF0000"}
 
     result = main(
         [
             str(csv_path),
             "--colors",
-            json.dumps(incomplete_colors),
+            json.dumps(partial_colors),
             "--timestamp-columns",
             "ts",
             "--no-show",
         ]
+    )
+    assert result == 0
+
+    # Unknown keys are rejected rather than silently ignored
+    result = main(
+        [
+            str(csv_path),
+            "--colors",
+            json.dumps({"lien": "#FF0000"}),
+            "--timestamp-columns",
+            "ts",
+            "--no-show",
+        ]
+    )
+    assert result == 1
+
+    # A JSON value that is not an object is rejected
+    result = main(
+        [str(csv_path), "--colors", '["#FF0000"]', "--timestamp-columns", "ts", "--no-show"]
     )
     assert result == 1
 
@@ -932,7 +949,7 @@ def test_main_event_log_invalid_timestamps(tmp_path):
     assert result == 1
 
 
-def test_main_event_log_incomplete_colors(tmp_path):
+def test_main_event_log_partial_colors(tmp_path):
     csv_path = tmp_path / "log.csv"
     csv_path.write_text("ts\n2024-01-01 10:00:00\n")
     result = main(
@@ -943,6 +960,23 @@ def test_main_event_log_incomplete_colors(tmp_path):
             "ts",
             "--colors",
             '{"line":"#0046be"}',
+            "--no-show",
+        ]
+    )
+    assert result == 0
+
+
+def test_main_event_log_invalid_color_value(tmp_path):
+    csv_path = tmp_path / "log.csv"
+    csv_path.write_text("ts\n2024-01-01 10:00:00\n")
+    result = main(
+        [
+            str(csv_path),
+            "--event-log",
+            "--log-time-column",
+            "ts",
+            "--colors",
+            '{"title":"not-a-color"}',
             "--no-show",
         ]
     )

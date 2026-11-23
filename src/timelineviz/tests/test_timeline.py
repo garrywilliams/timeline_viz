@@ -907,3 +907,20 @@ def test_plot_timeline_orders_columns_with_different_offsets_by_utc():
     assert _annotation_labels(axs) == ["Shipped", "Created"]
     assert "2024-06-01 08:00:00.000" in axs[0].texts[0].get_text()
     plt.close(fig)
+
+
+def test_plot_timeline_applies_partial_color_scheme():
+    from matplotlib.colors import to_hex
+
+    row = pd.Series({"a_at": "2024-01-01 10:00", "b_at": "2024-01-01 11:00"})
+    fig, axs = plot_timeline(
+        row,
+        ["a_at", "b_at"],
+        color_scheme={"title": "#aa0000", "label_bg": "#00bb00", "point_face": "#0000cc"},
+        show_plot=False,
+    )
+    assert to_hex(fig._suptitle.get_color()) == "#aa0000"
+    assert to_hex(axs[0].texts[0].get_bbox_patch().get_facecolor()) == "#00bb00"
+    points = [ln for ln in axs[0].lines if ln.get_marker() == "o"]
+    assert to_hex(points[0].get_markerfacecolor()) == "#0000cc"
+    plt.close(fig)

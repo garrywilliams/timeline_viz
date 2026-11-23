@@ -171,6 +171,36 @@ def create_color_scheme(base_color=None, accent_color=None):
     }
 
 
+def resolve_color_scheme(overrides=None):
+    """Merge a (possibly partial) colour override dict onto the default scheme.
+
+    ``line`` and ``point_face`` act as base / accent colours: every other key
+    derived from them follows them unless that key is overridden too. Any other
+    key can be overridden on its own. Values may be hex strings or matplotlib
+    colour names; they are normalised to ``#rrggbb``.
+
+    Raises
+    ------
+    ValueError
+        If a key is not a known colour slot or a value is not a valid colour.
+    """
+    from matplotlib.colors import to_hex
+
+    overrides = dict(overrides or {})
+    scheme = create_color_scheme(
+        base_color=overrides.get("line"), accent_color=overrides.get("point_face")
+    )
+    unknown = sorted(set(overrides) - set(scheme))
+    if unknown:
+        raise ValueError(f"Unknown color keys: {unknown}. Valid keys: {sorted(scheme)}")
+    for key, value in overrides.items():
+        try:
+            scheme[key] = to_hex(value)
+        except (ValueError, TypeError):
+            raise ValueError(f"Invalid color for {key!r}: {value!r}") from None
+    return scheme
+
+
 def detect_timestamp_columns(columns):
     """Detect columns that might contain timestamp data based on naming patterns."""
     timestamp_patterns = ["_utc", "_at", "_time", "_date", "timestamp", "datetime"]

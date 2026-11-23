@@ -419,3 +419,42 @@ def test_create_color_scheme_invalid_accent_hex():
 def test_create_color_scheme_invalid_empty_accent():
     with pytest.raises(ValueError, match="Invalid color name"):
         create_color_scheme(accent_color="")
+
+
+def test_resolve_color_scheme_defaults():
+    from timelineviz.utils import resolve_color_scheme
+
+    assert resolve_color_scheme() == create_color_scheme()
+    assert resolve_color_scheme({}) == create_color_scheme()
+
+
+def test_resolve_color_scheme_partial_overrides():
+    from timelineviz.utils import resolve_color_scheme
+
+    # Base colour flows to derived keys; explicit keys win over derived ones
+    scheme = resolve_color_scheme({"line": "red", "title": "#123456", "label_bg": "white"})
+    assert scheme["line"] == "#ff0000"
+    assert scheme["connector"] == "#ff0000"
+    assert scheme["slashes"] == "#ff0000"
+    assert scheme["title"] == "#123456"
+    assert scheme["label_bg"] == "#ffffff"
+    assert scheme["point_face"] == "#ffe000"  # default accent
+
+
+def test_resolve_color_scheme_every_key_is_honoured():
+    from timelineviz.utils import resolve_color_scheme
+
+    keys = create_color_scheme().keys()
+    overrides = {k: f"#{i + 1:02x}{i + 1:02x}{i + 1:02x}" for i, k in enumerate(keys)}
+    assert resolve_color_scheme(overrides) == overrides
+
+
+def test_resolve_color_scheme_rejects_bad_input():
+    from timelineviz.utils import resolve_color_scheme
+
+    with pytest.raises(ValueError, match="Unknown color keys"):
+        resolve_color_scheme({"lien": "#ff0000"})
+    with pytest.raises(ValueError, match="Invalid color for 'title'"):
+        resolve_color_scheme({"title": "not-a-color"})
+    with pytest.raises(ValueError, match="Invalid color for 'label_bg'"):
+        resolve_color_scheme({"label_bg": 42})

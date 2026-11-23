@@ -19,7 +19,7 @@ from timelineviz.timeline import (
     plot_event_log_timeline,
     plot_multiple_timelines,
 )
-from timelineviz.utils import create_color_scheme
+from timelineviz.utils import resolve_color_scheme
 
 
 def parse_args(args=None):
@@ -258,35 +258,11 @@ def main(args=None):
         print(f"Error parsing figure size: {e}", file=sys.stderr)
         return 1
 
-    # Initialize color_scheme
-    color_scheme = None
     input_data = None
 
-    # Validate color scheme if provided
-    if args.colors:
-        required_keys = [
-            "line",
-            "point_edge",
-            "point_face",
-            "connector",
-            "label_bg",
-            "label_edge",
-            "slashes",
-            "title",
-        ]
-        missing_keys = [key for key in required_keys if key not in args.colors]
-        if missing_keys:
-            print(f"Error: Missing required color keys: {missing_keys}")
-            return 1
-
-        # Validate each color value
-        try:
-            color_scheme = create_color_scheme(
-                base_color=args.colors.get("line"), accent_color=args.colors.get("point_face")
-            )
-        except ValueError as e:
-            print(f"Error: Invalid color scheme: {e}")
-            return 1
+    color_scheme, err = _color_scheme_from_args(args)
+    if err:
+        return err
 
     # Validate label mappings if provided (wide CSV mode only)
     if args.label_mappings and not args.event_log:
@@ -354,6 +330,20 @@ def main(args=None):
 
         traceback.print_exc()
         return 1
+
+
+def _color_scheme_from_args(args):
+    """Resolve ``--colors`` into a full scheme. Returns ``(scheme, exit_code)``."""
+    if not args.colors:
+        return None, 0
+    if not isinstance(args.colors, dict):
+        print("Error: --colors must be a JSON object", file=sys.stderr)
+        return None, 1
+    try:
+        return resolve_color_scheme(args.colors), 0
+    except ValueError as e:
+        print(f"Error: Invalid color scheme: {e}", file=sys.stderr)
+        return None, 1
 
 
 def _uses_stdin(input_arg):
@@ -495,29 +485,9 @@ def _run_event_log(args):
         print(f"Error parsing figure size: {e}", file=sys.stderr)
         return 1
 
-    color_scheme = None
-    if args.colors:
-        required_keys = [
-            "line",
-            "point_edge",
-            "point_face",
-            "connector",
-            "label_bg",
-            "label_edge",
-            "slashes",
-            "title",
-        ]
-        missing_keys = [key for key in required_keys if key not in args.colors]
-        if missing_keys:
-            print(f"Error: Missing required color keys: {missing_keys}", file=sys.stderr)
-            return 1
-        try:
-            color_scheme = create_color_scheme(
-                base_color=args.colors.get("line"), accent_color=args.colors.get("point_face")
-            )
-        except ValueError as e:
-            print(f"Error: Invalid color scheme: {e}", file=sys.stderr)
-            return 1
+    color_scheme, err = _color_scheme_from_args(args)
+    if err:
+        return err
 
     output_file = None
     if args.output_dir:
