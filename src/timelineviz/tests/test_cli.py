@@ -1431,3 +1431,231 @@ def test_main_promtest_output_format_and_width_only_figsize(tmp_path):
     )
     assert rc == 0
     assert (out / "promtest.svg").is_file()
+
+
+# --- swimlanes & mermaid ---------------------------------------------------
+
+RAW_LOG = (
+    "2026-04-03T09:00:01Z INFO app.server boot\n"
+    "2026-04-03T09:00:05Z WARN app.queue slow\n"
+    "2026-04-03T09:00:08Z ERROR app.queue failed\n"
+    "2026-04-03T09:00:09Z INFO app.queue retry\n"
+)
+
+ORDERS = (
+    "order_id,placed_at,shipped_at\n"
+    "A,2025-03-03 09:00:00,2025-03-03 12:00:00\n"
+    "B,2025-04-10 10:00:00,2025-04-10 11:30:00\n"
+)
+
+
+@pytest.fixture
+def raw_log(tmp_path):
+    p = tmp_path / "app.log"
+    p.write_text(RAW_LOG)
+    return p
+
+
+@pytest.fixture
+def orders_csv(tmp_path):
+    p = tmp_path / "orders.csv"
+    p.write_text(ORDERS)
+    return p
+
+
+def test_parse_args_swimlane_options():
+    args = parse_args(["x.log", "--event-log", "--raw-log-format", "--swimlanes"])
+    assert args.lane_column == "level"  # raw logs default lanes to the level column
+    assert args.align == "auto" and args.mermaid_style == "sequence"
+    assert args.threshold_explicit is False and args.threshold_days == 1.0
+    args = parse_args(["x.csv", "--event-log", "--log-time-column", "ts", "--lane-column", "svc"])
+    assert args.swimlanes is True
+    assert parse_args(["x.csv", "-T", "2"]).threshold_explicit is True
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["x.csv", "--lane-column", "svc"],  # needs --event-log
+        ["x.yml", "--promtest", "--swimlanes"],
+        ["x.yml", "--promtest", "--format", "mmd"],
+        ["x.csv", "--format", "mmd"],  # wide mode without --swimlanes
+        ["x.csv", "--event-log", "--log-time-column", "ts", "--swimlanes"],  # no lane column
+    ],
+)
+def test_parse_args_swimlane_errors(argv):
+    with pytest.raises(SystemExit):
+        parse_args(argv)
+
+
+def test_main_event_log_swimlanes_png(tmp_path, raw_log):
+    out = tmp_path / "out"
+    rc = main(
+        [
+            str(raw_log),
+            "--event-log",
+            "--raw-log-format",
+            "--swimlanes",
+            "-o",
+            str(out),
+            "--no-show",
+        ]
+    )
+    assert rc == 0
+    assert (out / "event_log_swimlanes.png").is_file()
+
+
+def test_main_event_log_swimlanes_mermaid_stdout(raw_log, capsys):
+    rc = main([str(raw_log), "--event-log", "--raw-log-format", "--swimlanes", "--format", "mmd"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert out.startswith("sequenceDiagram\n    title Event log by level\n")
+    assert "participant L0 as ERROR" in out
+
+
+def test_main_event_log_mermaid_gantt_file_without_lanes(tmp_path, raw_log):
+    out = tmp_path / "out"
+    rc = main(
+        [
+            str(raw_log),
+            "--event-log",
+            "--raw-log-format",
+            "--format",
+            "mmd",
+            "--mermaid-style",
+            "gantt",
+            "-o",
+            str(out),
+        ]
+    )
+    assert rc == 0
+    text = (out / "event_log_timeline.mmd").read_text()
+    assert text.startswith("gantt\n") and "section Events" in text
+
+
+def test_main_event_log_gantt_start_alignment_errors(raw_log, capsys):
+    rc = main(
+        [
+            str(raw_log),
+            "--event-log",
+            "--raw-log-format",
+            "--swimlanes",
+            "--format",
+            "mmd",
+            "--mermaid-style",
+            "gantt",
+            "--align",
+            "start",
+        ]
+    )
+    assert rc == 1
+    assert "absolute" in capsys.readouterr().err
+
+
+def test_main_event_log_lanes_errors(tmp_path, capsys):
+    assert main(["missing.log", "--event-log", "--raw-log-format", "--swimlanes"]) == 1
+    assert "not found" in capsys.readouterr().err
+    csv_path = tmp_path / "l.csv"
+    csv_path.write_text("ts,level\n2024-01-01,INFO\n")
+    rc = main([str(csv_path), "--event-log", "--log-time-column", "ts", "--lane-column", "nope"])
+    assert rc == 1
+    assert "lane_column" in capsys.readouterr().err
+    rc = main(
+        [
+            str(csv_path),
+            "--event-log",
+            "--log-time-column",
+            "ts",
+            "--lane-column",
+            "level",
+            "--log-filter-column",
+            "level",
+            "--log-include",
+            "ERROR",
+        ]
+    )
+    assert rc == 1
+    assert "No events" in capsys.readouterr().err
+
+
+def test_main_entity_swimlanes_default_start_alignment(tmp_path, orders_csv, monkeypatch):
+    import timelineviz.cli as cli
+
+    seen = {}
+    real = cli.render_swimlanes
+
+    def spy(timeline, **kwargs):
+        seen.update(kwargs, lanes=timeline.lane_order())
+        return real(timeline, **kwargs)
+
+    monkeypatch.setattr(cli, "render_swimlanes", spy)
+    out = tmp_path / "out"
+    rc = main(
+        [
+            str(orders_csv),
+            "--id-column",
+            "order_id",
+            "--entity-name",
+            "Order",
+            "--swimlanes",
+            "-o",
+            str(out),
+            "--format",
+            "svg",
+            "--no-show",
+        ]
+    )
+    assert rc == 0
+    assert (out / "order_swimlanes.svg").is_file()
+    assert seen["align"] == "start" and seen["threshold_days"] == float("inf")
+    assert seen["lanes"] == ["A", "B"]
+
+
+def test_main_entity_swimlanes_explicit_threshold_and_absolute(tmp_path, orders_csv, monkeypatch):
+    import timelineviz.cli as cli
+
+    seen = {}
+    monkeypatch.setattr(cli, "render_swimlanes", lambda t, **kw: seen.update(kw))
+    rc = main(
+        [
+            str(orders_csv),
+            "--id-column",
+            "order_id",
+            "--swimlanes",
+            "--align",
+            "absolute",
+            "-T",
+            "3",
+            "--no-show",
+        ]
+    )
+    assert rc == 0
+    assert seen["align"] == "absolute" and seen["threshold_days"] == 3
+
+
+def test_main_entity_swimlanes_mermaid(orders_csv, capsys):
+    rc = main([str(orders_csv), "--id-column", "order_id", "--swimlanes", "--format", "mmd"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "participant L0 as A" in out and "+3h<br/>Shipped" in out
+
+
+def test_main_entity_swimlanes_errors(tmp_path, capsys):
+    assert main(["missing.csv", "--swimlanes"]) == 1
+    assert "not found" in capsys.readouterr().err
+    p = tmp_path / "n.csv"
+    p.write_text("id,name\n1,x\n")
+    assert main([str(p), "--swimlanes"]) == 1
+    assert "No timestamp columns" in capsys.readouterr().err
+    with pytest.raises(SystemExit):
+        main([str(p), "--swimlanes", "--figsize", "1,2,3"])
+
+
+def test_entity_swimlanes_bad_colors_and_figsize(orders_csv, capsys):
+    from types import SimpleNamespace
+
+    import timelineviz.cli as cli
+
+    base = dict(csv_file=str(orders_csv), colors=None, figsize=None)
+    assert cli._run_entity_swimlanes(SimpleNamespace(**{**base, "figsize": "1,2,3"})) == 1
+    assert cli._run_entity_swimlanes(SimpleNamespace(**{**base, "colors": {"x": "1"}})) == 1
