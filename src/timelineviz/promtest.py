@@ -24,6 +24,8 @@ import numpy as np
 import yaml
 from matplotlib.ticker import FuncFormatter
 
+from timelineviz.utils import show_or_close
+
 # ---------------------------------------------------------------------------
 # Duration parsing
 # ---------------------------------------------------------------------------
@@ -1449,17 +1451,7 @@ def plot_promtest(
             out = output_file.replace(".png", f"{suffix}.png") if len(groups) > 1 else output_file
             fig.savefig(out, bbox_inches="tight", dpi=dpi)
 
-        if show_plot:
-            if plt.get_backend().lower() in [
-                "tkagg",
-                "qt5agg",
-                "macosx",
-                "wx",
-                "gtk3agg",
-            ]:  # pragma: no cover
-                plt.show()  # pragma: no cover
-        else:
-            plt.close(fig)
+        show_or_close(fig, show_plot)
 
         results.append((fig, flat_axes))
 

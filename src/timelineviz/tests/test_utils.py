@@ -458,3 +458,47 @@ def test_resolve_color_scheme_rejects_bad_input():
         resolve_color_scheme({"title": "not-a-color"})
     with pytest.raises(ValueError, match="Invalid color for 'label_bg'"):
         resolve_color_scheme({"label_bg": 42})
+
+
+@pytest.mark.parametrize(
+    "backend",
+    ["qtagg", "QtAgg", "qt5agg", "tkagg", "TkAgg", "macosx", "gtk4agg", "wxagg"],
+)
+def test_is_gui_backend_true(backend):
+    from timelineviz.utils import is_gui_backend
+
+    assert is_gui_backend(backend)
+
+
+@pytest.mark.parametrize(
+    "backend",
+    ["agg", "Agg", "pdf", "svg", "module://matplotlib_inline.backend_inline"],
+)
+def test_is_gui_backend_false(backend):
+    from timelineviz.utils import is_gui_backend
+
+    assert not is_gui_backend(backend)
+
+
+@pytest.mark.parametrize(
+    "backend,show_plot,expect_show,expect_open",
+    [
+        ("qtagg", True, True, True),  # modern Qt name was previously missed
+        ("agg", True, False, True),  # headless: leave figure open for the caller
+        ("module://matplotlib_inline.backend_inline", True, False, True),
+        ("qtagg", False, False, False),  # show_plot=False always closes
+    ],
+)
+def test_show_or_close(monkeypatch, backend, show_plot, expect_show, expect_open):
+    import matplotlib.pyplot as plt
+
+    from timelineviz.utils import show_or_close
+
+    shown = []
+    monkeypatch.setattr(plt, "get_backend", lambda: backend)
+    monkeypatch.setattr(plt, "show", lambda *a, **k: shown.append(True))
+    fig = plt.figure()
+    show_or_close(fig, show_plot)
+    assert bool(shown) is expect_show
+    assert plt.fignum_exists(fig.number) is expect_open
+    plt.close(fig)

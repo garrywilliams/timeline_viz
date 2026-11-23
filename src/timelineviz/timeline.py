@@ -16,6 +16,7 @@ from timelineviz.utils import (
     detect_timestamp_columns,
     parse_timestamps,
     resolve_color_scheme,
+    show_or_close,
 )
 
 # Default color scheme - Best Buy brand colors
@@ -281,17 +282,7 @@ def _plot_sorted_events(
         fig.savefig(output_file, bbox_inches="tight", dpi=dpi)
         print(f"Saved timeline to {output_file}")
 
-    if show_plot:
-        if plt.get_backend().lower() in [
-            "tkagg",
-            "qt5agg",
-            "macosx",
-            "wx",
-            "gtk3agg",
-        ]:  # pragma: no cover
-            plt.show()  # pragma: no cover
-    else:
-        plt.close(fig)
+    show_or_close(fig, show_plot)
 
     return fig, axs
 

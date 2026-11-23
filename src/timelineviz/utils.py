@@ -264,3 +264,33 @@ def clean_column_name(column_name, remove_suffixes=None):
 
     # Title case the result
     return clean_name.title()
+
+
+# Matplotlib's built-in non-interactive (file-only) backends.
+_NON_INTERACTIVE_BACKENDS = frozenset({"agg", "cairo", "pdf", "pgf", "ps", "svg", "template"})
+
+
+def is_gui_backend(backend):
+    """Return True if ``backend`` opens a window, so ``plt.show()`` is needed.
+
+    Covers every GUI backend name (``qtagg``, ``qt5agg``, ``tkagg``, ``macosx``,
+    ``gtk4agg``, ``wxagg``, …) without a hard-coded allowlist that goes stale.
+    Notebook / third-party ``module://`` backends (e.g. Jupyter inline) display
+    figures themselves, so they are not treated as GUI backends.
+    """
+    name = backend.lower()
+    return not name.startswith("module://") and name not in _NON_INTERACTIVE_BACKENDS
+
+
+def show_or_close(fig, show_plot):
+    """Show ``fig`` on a GUI backend when requested, otherwise close it.
+
+    With ``show_plot=True`` on a non-GUI backend (scripts using Agg, Jupyter
+    inline) the figure is left open, which is what lets notebooks render it.
+    """
+    import matplotlib.pyplot as plt
+
+    if not show_plot:
+        plt.close(fig)
+    elif is_gui_backend(plt.get_backend()):
+        plt.show()
