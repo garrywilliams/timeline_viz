@@ -96,3 +96,60 @@ def test_load_dataframe(tmp_path):
     assert list(load_dataframe(str(p)).columns) == ["a"]
     with pytest.raises(ValueError):
         load_dataframe(42)
+
+
+def test_event_lane_defaults_to_none():
+    assert Event(ts("2024-01-01"), "a").lane is None
+
+
+def test_default_lane_order_levels_by_severity_else_first_seen():
+    from timelineviz.model import default_lane_order
+
+    assert default_lane_order(["INFO", "error", "WARN", "INFO", "FATAL"]) == [
+        "FATAL",
+        "error",
+        "WARN",
+        "INFO",
+    ]
+    assert default_lane_order(["svc-b", "svc-a", "svc-b"]) == ["svc-b", "svc-a"]
+    assert default_lane_order([None, None]) == [None]
+    assert default_lane_order([]) == []
+
+
+def test_timeline_from_event_log_lane_column():
+    df = pd.DataFrame(
+        {
+            "ts": ["2024-01-01 10:00", "2024-01-01 10:01", "2024-01-01 10:02"],
+            "level": ["INFO", None, "ERROR"],
+            "msg": ["a", "b", "c"],
+        }
+    )
+    t = timeline_from_event_log(df, "ts", label_column="msg", lane_column="level")
+    assert t.lanes == ["INFO", None, "ERROR"]
+    assert t.lane_order() == ["INFO", None, "ERROR"]  # None is not a level → first-seen
+    with pytest.raises(ValueError, match="lane_column"):
+        timeline_from_event_log(df, "ts", lane_column="nope")
+
+
+def test_timeline_from_wide_entities_one_lane_per_entity():
+    from timelineviz.model import timeline_from_wide_entities
+
+    df = pd.DataFrame(
+        {
+            "order_id": ["A", "B", "A", "C"],
+            "placed_at": ["2024-01-01 09:00", "2024-02-01 09:00", None, "2024-03-01"],
+            "shipped_at": ["2024-01-01 12:00", None, "2024-01-02 08:00", "2024-03-02"],
+        }
+    )
+    t = timeline_from_wide_entities(df, ["placed_at", "shipped_at"], "order_id", max_entities=2)
+    assert t.lane_order() == ["A", "B"]
+    assert [(e.lane, e.label) for e in t.events] == [
+        ("A", "Placed"),
+        ("A", "Shipped"),
+        ("A", "Shipped"),
+        ("B", "Placed"),
+    ]
+    by_row = timeline_from_wide_entities(df.iloc[:2])  # rows as lanes, detected columns
+    assert by_row.lane_order() == ["row_0", "row_1"]
+    with pytest.raises(ValueError, match="id_column"):
+        timeline_from_wide_entities(df, id_column="nope")

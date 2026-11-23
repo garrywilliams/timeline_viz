@@ -38,6 +38,7 @@ from timelineviz.model import (
     Timeline,
     timeline_from_event_log,
     timeline_from_wide,
+    timeline_from_wide_entities,
 )
 from timelineviz.promtest import (
     expand_values,
@@ -47,7 +48,8 @@ from timelineviz.promtest import (
     parse_promtest_string,
     plot_promtest,
 )
-from timelineviz.render_mpl import render_timeline
+from timelineviz.render_mermaid import to_mermaid
+from timelineviz.render_mpl import render_swimlanes, render_timeline
 from timelineviz.timeline import (
     find_clusters,
     format_timestamp,
@@ -66,6 +68,9 @@ __all__ = [
     "timeline_from_wide",
     "timeline_from_event_log",
     "render_timeline",
+    "render_swimlanes",
+    "timeline_from_wide_entities",
+    "to_mermaid",
     "find_clusters",
     "format_timestamp",
     "parse_promtest_file",

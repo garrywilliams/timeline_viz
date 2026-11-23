@@ -105,6 +105,7 @@ class LabelPlacement:
     width_pt: float
     height_pt: float
     fallback: bool = False  # placed by the last-resort rule; connector may cross a box
+    lane: int = 0  # index into TimelineLayout.lanes
 
     @property
     def box_center(self) -> float:
@@ -128,14 +129,34 @@ class PanelLayout:
 
 
 @dataclass
+class LaneLayout:
+    """One horizontal lane. A plain timeline has exactly one, named ``None``."""
+
+    name: str | None
+    above_pt: float  # label space above this lane's line
+    below_pt: float  # label space below this lane's line
+    baseline_pt: float  # y of the lane line, measured up from the bottom of the axes
+
+    @property
+    def height_pt(self) -> float:
+        return self.above_pt + self.below_pt
+
+
+@dataclass
 class TimelineLayout:
     panels: list[PanelLayout]
     labels: list[LabelPlacement]
-    above_pt: float  # space needed above the line
-    below_pt: float  # space needed below the line
+    above_pt: float  # space above the (top) lane line
+    below_pt: float  # space below the (bottom) lane line
     fig_width_in: float
     fig_height_in: float
     gaps: list[float] = field(default_factory=list)  # days skipped at each break
+    lanes: list[LaneLayout] = field(default_factory=list)
+
+    @property
+    def total_height_pt(self) -> float:
+        """Height of the plotting area (all lanes stacked), in points."""
+        return sum(lane.height_pt for lane in self.lanes)
 
 
 def label_box_size(text: str, measure: Callable[[str], float]) -> tuple[float, float]:
@@ -273,38 +294,61 @@ def compute_layout(
     measure: Callable[[str], float],
     fig_width_in: float = 15.0,
     varying_height: bool = False,
+    lanes: Sequence | None = None,
+    lane_order: Sequence | None = None,
+    gutter_in: float = 0.0,
 ) -> TimelineLayout:
-    """Lay out a whole timeline: panels, label boxes and figure size.
+    """Lay out a whole timeline: panels, lanes, label boxes and figure size.
 
     Parameters
     ----------
     dates_num : sequence of float
-        Sorted event times as matplotlib date numbers.
+        Event positions (matplotlib date numbers, or day offsets). Need not be
+        sorted; label indices always refer to positions in this sequence.
     label_texts : sequence of str
         Label text per event (may contain newlines).
     threshold_days : float
-        Gap that splits the timeline into separate panels.
+        Gap that splits the timeline into separate panels (shared by all lanes).
     measure : callable
         ``measure(line) -> width in points`` for one line of label text.
     fig_width_in : float
         Figure width; the height is derived from the label stacks.
     varying_height : bool
         Stagger labels across several tracks even where they would fit lower.
+    lanes : sequence, optional
+        Lane key per event. ``None`` (default) puts everything in one lane.
+    lane_order : sequence, optional
+        Lane keys top to bottom. Defaults to first-appearance order.
+    gutter_in : float
+        Extra left margin (inches), e.g. for lane names.
     """
     dates = np.asarray(dates_num, dtype=float)
-    clusters, cluster_indices = find_clusters(dates, threshold_days)
+    n_events = len(dates)
+    lane_keys = list(lanes) if lanes is not None else [None] * n_events
+    order = list(lane_order) if lane_order is not None else list(dict.fromkeys(lane_keys))
+    lane_index = {key: i for i, key in enumerate(order)}
+    missing = [k for k in dict.fromkeys(lane_keys) if k not in lane_index]
+    if missing:
+        raise ValueError(f"lane_order is missing lanes: {missing}")
+
+    by_time = sorted(range(n_events), key=lambda i: dates[i])
+    clusters, sorted_idx = find_clusters(dates[by_time], threshold_days)
+    cluster_indices = [[by_time[k] for k in idx] for idx in sorted_idx]
     sizes = [label_box_size(t, measure) for t in label_texts]
 
     n = len(clusters)
-    available = fig_width_in - 2 * MARGIN_X_IN - (n - 1) * BREAK_GAP_IN
+    left0 = MARGIN_X_IN + gutter_in
+    available = fig_width_in - left0 - MARGIN_X_IN - (n - 1) * BREAK_GAP_IN
     needs = []
     for idx in cluster_indices:
-        widths = [sizes[i][0] for i in idx]
-        needs.append(max(sum(widths) / 2.0, max(widths)))
+        per_lane = {}
+        for i in idx:
+            per_lane.setdefault(lane_keys[i], []).append(sizes[i][0])
+        needs.append(max(max(sum(w) / 2.0, max(w)) for w in per_lane.values()))
     widths_in = _panel_widths(needs, max(available, MIN_PANEL_IN * n))
 
     panels, labels = [], []
-    left = MARGIN_X_IN
+    left = left0
     for cluster, idx, w_in in zip(clusters, cluster_indices, widths_in):
         x_lo, x_hi = _panel_x_range(cluster)
         panel = PanelLayout(
@@ -316,38 +360,54 @@ def compute_layout(
             max_ticks=max(2, int(w_in / MAX_TICK_SPACING_IN)),
         )
         panels.append(panel)
-        labels.extend(
-            pack_labels(
-                [dates[i] for i in idx],
-                [sizes[i] for i in idx],
+        for key in order:
+            members = [i for i in idx if lane_keys[i] == key]
+            if not members:
+                continue
+            placed = pack_labels(
+                [dates[i] for i in members],
+                [sizes[i] for i in members],
                 x_lo,
                 x_hi,
                 panel.data_per_pt,
                 varying_height=varying_height,
-                index_offset=idx[0],
             )
-        )
+            for p, i in zip(placed, members):
+                p.index = i
+                p.lane = lane_index[key]
+            labels.extend(placed)
         left += w_in + BREAK_GAP_IN
 
-    def extent(side):
-        return max(
-            (abs(p.y) + p.height_pt for p in labels if p.side == side),
-            default=FIRST_LEVEL_GAP,
+    def extent(lane_no, side):
+        return (
+            max(
+                (abs(p.y) + p.height_pt for p in labels if p.lane == lane_no and p.side == side),
+                default=FIRST_LEVEL_GAP,
+            )
+            + 6.0
         )
 
-    above = extent(ABOVE) + 6.0
-    below = extent(BELOW) + 6.0
-    fig_h = TITLE_BAND_IN + (above + below) / 72.0 + TICK_BAND_IN
+    lane_layouts = []
+    for k, key in enumerate(order):
+        lane_layouts.append(LaneLayout(key, extent(k, ABOVE), extent(k, BELOW), 0.0))
+    total = sum(lane.height_pt for lane in lane_layouts)
+    y = total
+    for lane in lane_layouts:  # stack top to bottom
+        lane.baseline_pt = y - lane.above_pt
+        y -= lane.height_pt
+
+    fig_h = TITLE_BAND_IN + total / 72.0 + TICK_BAND_IN
     gaps = [float(clusters[i + 1][0] - clusters[i][-1]) for i in range(n - 1)]
 
     return TimelineLayout(
         panels=panels,
         labels=labels,
-        above_pt=above,
-        below_pt=below,
+        above_pt=lane_layouts[0].above_pt if lane_layouts else FIRST_LEVEL_GAP,
+        below_pt=lane_layouts[-1].below_pt if lane_layouts else FIRST_LEVEL_GAP,
         fig_width_in=fig_width_in,
         fig_height_in=fig_h,
         gaps=gaps,
+        lanes=lane_layouts,
     )
 
 
@@ -361,3 +421,17 @@ def format_gap(days: float) -> str:
     if h:
         return f"{h}h {m}m" if m else f"{h}h"
     return f"{m}m" if m else "<1m"
+
+
+def format_offset(days: float) -> str:
+    """Elapsed time to the second, two most significant units: ``'1h 30m'``, ``'45s'``."""
+    total_s = int(round(abs(days) * 86400))
+    d, rem = divmod(total_s, 86400)
+    h, rem = divmod(rem, 3600)
+    m, sec = divmod(rem, 60)
+    parts = [(d, "d"), (h, "h"), (m, "m"), (sec, "s")]
+    while parts and parts[0][0] == 0:
+        parts.pop(0)
+    if not parts:
+        return "0s"
+    return " ".join(f"{v}{u}" for v, u in parts[:2] if v)

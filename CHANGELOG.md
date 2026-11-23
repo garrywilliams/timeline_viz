@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Swimlanes:** `render_swimlanes()` and CLI `--swimlanes` draw one lane per `Event.lane`, with breaks shared by all lanes and lane names in a left gutter.
+  - Event logs: `timeline_from_event_log(..., lane_column=)` / `--lane-column`. Raw logs default to the parsed `level`. Levels are ordered by severity and use status colours.
+  - Entities: `timeline_from_wide_entities()`; in the CLI, `--swimlanes` on wide CSV gives one lane per `--id-column` value (or per row).
+  - `align="start"` / `--align start` aligns each lane to its first event and shows elapsed time (`+1h 30m`). It is the default for entities, and has no breaks unless `--threshold-days` is given.
+- **Mermaid output:** `to_mermaid()` and `--format mmd` (stdout without `-o`, `.mmd` file with it), as a `sequenceDiagram` (default) or `gantt` (`--mermaid-style gantt`).
+- `examples/order_fulfilment.csv` (synthetic) and `examples/swimlanes_levels.mmd`; `make example-charts` also renders `swimlanes_levels.png` and `swimlanes_orders.png`.
 - `Event` / `Timeline` data model (`timelineviz.model`) with `timeline_from_wide` and `timeline_from_event_log` builders, and `render_timeline` to draw any `Timeline`. All are exported from `timelineviz`.
 - Collision-free label layout (`timelineviz.layout`): label boxes never overlap, connectors never cross another label, and boxes stay inside their panel. The figure height grows to fit.
 - Timeline breaks are labelled with the time skipped (e.g. `+3d 2h`).

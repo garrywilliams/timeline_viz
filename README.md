@@ -20,6 +20,8 @@ Timeline visualisation for CSV data and Prometheus test files.
 - Date-aware time axis, plus PNG, SVG or PDF output
 - Auto-detect timestamp columns based on naming patterns
 - **Visualise Prometheus `promtool` unit-test files** — series values, eval checkpoints, and alert checks on a relative time axis
+- **Swimlanes**: one lane per log level, service or entity, on a shared clock or aligned to each lane's start
+- **Mermaid output** (`--format mmd`): sequence or gantt diagrams that render natively in GitHub / GitLab markdown
 - Customisable colour schemes
 - CLI and Python API
 - **Optional next step:** use saved PNGs (plus your CSV or milestone list) as input to **multimodal / image-generation LLMs** to produce executive-style infographics — see below
@@ -115,7 +117,7 @@ tail -n 100 logs/development.csv | timelineviz --event-log --log-time-column ts 
   --log-include ERROR WARN --output-dir timelines --no-show
 ```
 
-Omit the input path or pass `-` to read from stdin. This works for wide CSV mode, `--event-log`, and `--promtest`.
+Omit the input path or pass `-` to read from stdin. This works for wide CSV mode, `--event-log`, `--swimlanes` and `--promtest`.
 
 For plain-text logs, `timelineviz` can also parse common timestamp-first log lines directly in `--event-log` mode:
 
@@ -171,6 +173,70 @@ For a denser example with more incident points, varying-height label bubbles, an
 rendered with `--varying-height --threshold-days 2`:
 
 ![Long-format event log timeline with varying-height labels and multiple time breaks](https://raw.githubusercontent.com/garrywilliams/timeline_viz/main/images/event_log_timeline_breaks.png)
+
+### Swimlanes
+
+Put events in **lanes** to compare streams side by side: one lane per **log level** (or service, host, ...) on a shared clock, or one lane per **entity** with every lane aligned to its own first event.
+
+```bash
+# One lane per log level (raw logs use the parsed level column automatically)
+timelineviz app.log --event-log --raw-log-format auto --swimlanes -o out
+
+# Any column as the lane, e.g. service
+timelineviz incident.csv --event-log --log-time-column ts --log-label-column message \
+  --lane-column service -o out
+
+# One lane per entity, aligned to each entity's first event (default for entities)
+timelineviz examples/order_fulfilment.csv --id-column order_id --entity-name Order \
+  --swimlanes -o out
+```
+
+![Swimlanes: application log by level](https://raw.githubusercontent.com/garrywilliams/timeline_viz/main/images/swimlanes_levels.png)
+
+![Swimlanes: orders aligned to the moment they were placed](https://raw.githubusercontent.com/garrywilliams/timeline_viz/main/images/swimlanes_orders.png)
+
+Log levels are ordered by severity (FATAL → TRACE) and coloured by status. Other lanes keep their first-seen order and use a fixed colour-blind-safe palette; the lane name is always printed, so colour never carries meaning alone. `--align absolute|start` overrides the default axis. With `start`, there are no time breaks unless you pass `--threshold-days`.
+
+```python
+from timelineviz import render_swimlanes, timeline_from_event_log, timeline_from_wide_entities
+
+logs = timeline_from_event_log("incident.csv", "ts", label_column="message", lane_column="level")
+render_swimlanes(logs, output_file="levels.svg", show_plot=False)
+
+orders = timeline_from_wide_entities("orders.csv", id_column="order_id")
+render_swimlanes(orders, align="start", output_file="orders.png", show_plot=False)
+```
+
+### Mermaid output
+
+`--format mmd` (or `to_mermaid()` in Python) writes [Mermaid](https://mermaid.js.org/) source instead of an image, so a timeline can live in a README, PR or incident write-up and render natively on GitHub, GitLab, Notion and Obsidian. Without `-o` it prints to stdout.
+
+```bash
+timelineviz app.log --event-log --raw-log-format auto --swimlanes --format mmd > timeline.mmd
+timelineviz app.log --event-log --raw-log-format auto --swimlanes --format mmd --mermaid-style gantt
+```
+
+- `--mermaid-style sequence` (default): one participant per lane and a note per event, in time order. Long gaps get a "+4h 42m later" note.
+- `--mermaid-style gantt`: one section per lane, with a milestone per event on a proportional time axis. Needs absolute alignment.
+
+A shortened version of [`examples/swimlanes_levels.mmd`](https://github.com/garrywilliams/timeline_viz/blob/main/examples/swimlanes_levels.mmd):
+
+```mermaid
+sequenceDiagram
+    title Application log by level
+    participant L0 as FATAL
+    participant L1 as ERROR
+    participant L2 as WARN
+    participant L3 as INFO
+    Note over L3: 09:00:01<br/>Boot sequence started
+    Note over L2: 09:00:05<br/>Inbound queue depth crossed soft limit
+    Note over L1: 09:00:08<br/>Failed to publish invoice.created event
+    Note over L3: 09:00:31<br/>Cache warmup completed
+    Note over L0,L3: +4h 42m later
+    Note over L2: 13:42:18<br/>Report generation slowed
+    Note over L0: 13:42:44<br/>Revenue summary export aborted
+    Note over L3: 13:43:38<br/>Export completed after fallback path
+```
 
 ### Prometheus Test Timelines
 

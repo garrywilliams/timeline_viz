@@ -556,6 +556,12 @@ def test_plot_timeline_empty_series():
     assert ax is None
 
 
+def _label_heights(ax):
+    """Distance of each label centre from the timeline (the first horizontal line)."""
+    baseline = ax.lines[0].get_ydata()[0]
+    return {round(abs(t.get_position()[1] - baseline), 1) for t in ax.texts}
+
+
 def test_plot_timeline_varying_height_default_is_uniform():
     data = pd.Series(
         {
@@ -572,7 +578,7 @@ def test_plot_timeline_varying_height_default_is_uniform():
         timestamp_columns=["event1", "event2", "event3", "event4", "event5", "event6"],
         show_plot=False,
     )
-    heights = {round(abs(text.get_position()[1]), 1) for text in axs[0].texts}
+    heights = _label_heights(axs[0])
     assert len(heights) == 1  # well-spaced labels all sit on the first track
     plt.close(fig)
 
@@ -594,7 +600,7 @@ def test_plot_timeline_varying_height_uses_multiple_levels():
         varying_height=True,
         show_plot=False,
     )
-    heights = {round(abs(text.get_position()[1]), 1) for text in axs[0].texts}
+    heights = _label_heights(axs[0])
     assert len(heights) > 1
     plt.close(fig)
 
@@ -637,7 +643,7 @@ def test_plot_event_log_timeline_varying_height_uses_multiple_levels():
         varying_height=True,
         show_plot=False,
     )
-    heights = {round(abs(text.get_position()[1]), 1) for text in axs[0].texts}
+    heights = _label_heights(axs[0])
     assert len(heights) > 1
     plt.close(fig)
 

@@ -14,12 +14,15 @@ import sys
 
 import pandas as pd
 
+from timelineviz.model import timeline_from_event_log, timeline_from_wide_entities
 from timelineviz.promtest import parse_promtest_file, parse_promtest_string, plot_promtest
+from timelineviz.render_mermaid import to_mermaid, write_mermaid
+from timelineviz.render_mpl import render_swimlanes, render_timeline
 from timelineviz.timeline import (
     plot_event_log_timeline,
     plot_multiple_timelines,
 )
-from timelineviz.utils import resolve_color_scheme
+from timelineviz.utils import detect_timestamp_columns, resolve_color_scheme
 
 
 def parse_args(args=None):
@@ -61,6 +64,15 @@ Example usage:
   # Raw timestamped logs from stdin:
   kubectl logs deploy/my-app --timestamps \\
     | timelineviz --event-log --raw-log-format auto --log-include ERROR WARN
+
+  # Swimlanes: one lane per log level (raw logs default to the level column):
+  timelineviz app.log --event-log --raw-log-format auto --swimlanes -o out
+
+  # Swimlanes: one lane per entity, each aligned to its own first event:
+  timelineviz orders.csv --id-column order_id --swimlanes -o out
+
+  # Mermaid (renders in GitHub/GitLab markdown); printed to stdout without -o:
+  timelineviz app.log --event-log --raw-log-format auto --swimlanes --format mmd
 """,
     )
 
@@ -100,8 +112,9 @@ Example usage:
         "--threshold-days",
         "-T",
         type=float,
-        default=1.0,
-        help="Number of days gap to consider as a break in timeline",
+        default=None,
+        help="Number of days gap to consider as a break in timeline (default: 1; "
+        "start-aligned swimlanes have no breaks unless this is given)",
     )
 
     parser.add_argument(
@@ -115,9 +128,37 @@ Example usage:
     parser.add_argument(
         "--format",
         dest="output_format",
-        choices=("png", "svg", "pdf"),
+        choices=("png", "svg", "pdf", "mmd"),
         default="png",
-        help="File format for images written to --output-dir (default: png)",
+        help="Output format (default: png). 'mmd' writes Mermaid source, or prints it to "
+        "stdout when --output-dir is not given; needs --event-log or --swimlanes",
+    )
+
+    parser.add_argument(
+        "--swimlanes",
+        action="store_true",
+        help="Draw one lane per log level (--event-log, see --lane-column) or per entity "
+        "(wide CSV) in a single chart",
+    )
+    parser.add_argument(
+        "--lane-column",
+        metavar="COL",
+        help="With --event-log: column naming each event's lane (default: --log-filter-column, "
+        "which raw logs set to 'level'). Implies --swimlanes",
+    )
+    parser.add_argument(
+        "--align",
+        choices=("auto", "absolute", "start"),
+        default="auto",
+        help="Swimlane time axis: 'absolute' clock time, or 'start' = time since each lane's "
+        "first event. Default: absolute for logs, start for entities",
+    )
+    parser.add_argument(
+        "--mermaid-style",
+        choices=("sequence", "gantt"),
+        default="sequence",
+        help="With --format mmd: 'sequence' (ordered notes per lane) or 'gantt' "
+        "(milestones on a time axis; absolute alignment only)",
     )
 
     parser.add_argument("--point-size", type=int, default=10, help="Size of the event points")
@@ -238,6 +279,23 @@ Example usage:
     if args.event_log and not args.log_time_column:
         parser.error("--event-log requires --log-time-column")
 
+    args.threshold_explicit = args.threshold_days is not None
+    if args.threshold_days is None:
+        args.threshold_days = 1.0
+
+    if args.lane_column:
+        if not args.event_log:
+            parser.error("--lane-column requires --event-log")
+        args.swimlanes = True
+    if args.promtest and (args.swimlanes or args.output_format == "mmd"):
+        parser.error("--swimlanes and --format mmd are not available with --promtest")
+    if args.swimlanes and args.event_log and not args.lane_column:
+        if not args.log_filter_column:
+            parser.error("--swimlanes with --event-log needs --lane-column")
+        args.lane_column = args.log_filter_column
+    if args.output_format == "mmd" and not (args.event_log or args.swimlanes):
+        parser.error("--format mmd requires --event-log or --swimlanes")
+
     return args
 
 
@@ -261,6 +319,10 @@ def main(args=None):
     # --- Promtest mode ---
     if args.promtest:
         return _run_promtest(args)
+
+    # --- Wide CSV, one lane per entity ---
+    if getattr(args, "swimlanes", False):
+        return _run_entity_swimlanes(args)
 
     figsize, err = _figsize_from_args(args)
     if err:
@@ -515,6 +577,9 @@ def _run_event_log(args):
     if err:
         return err
 
+    if getattr(args, "swimlanes", False) or getattr(args, "output_format", "png") == "mmd":
+        return _run_event_log_lanes(args, figsize, color_scheme)
+
     output_file = None
     if args.output_dir:
         os.makedirs(args.output_dir, exist_ok=True)
@@ -558,6 +623,119 @@ def _run_event_log(args):
 
     # Save path is already printed by plot_event_log_timeline / _plot_sorted_events
     print("Successfully generated event log timeline.")
+    return 0
+
+
+def _run_event_log_lanes(args, figsize, color_scheme):
+    """--event-log with --swimlanes and/or --format mmd."""
+    lane_column = getattr(args, "lane_column", None) if getattr(args, "swimlanes", False) else None
+    try:
+        input_data = _load_event_log_input(args.csv_file, raw_log_format=args.raw_log_format)
+        timeline = timeline_from_event_log(
+            input_data,
+            args.log_time_column,
+            label_column=args.log_label_column,
+            filter_column=args.log_filter_column,
+            include_values=args.log_include,
+            exclude_values=args.log_exclude,
+            lane_column=lane_column,
+            title=f"Event log by {lane_column}" if lane_column else "Event log",
+        )
+    except FileNotFoundError:
+        print(f"Error: File '{args.csv_file}' not found", file=sys.stderr)
+        return 1
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    stem = "event_log_swimlanes" if lane_column else "event_log_timeline"
+    return _emit_lanes(timeline, args, figsize, color_scheme, stem, default_align="absolute")
+
+
+def _run_entity_swimlanes(args):
+    """Wide CSV with --swimlanes: one lane per entity."""
+    figsize, err = _figsize_from_args(args)
+    if err:
+        return err
+    color_scheme, err = _color_scheme_from_args(args)
+    if err:
+        return err
+    try:
+        df = _load_csv_input(args.csv_file)
+        df = df if isinstance(df, pd.DataFrame) else pd.read_csv(df)
+        columns = args.timestamp_columns or detect_timestamp_columns(df)
+        if not columns:
+            raise ValueError("No timestamp columns specified or detected")
+        timeline = timeline_from_wide_entities(
+            df,
+            columns,
+            args.id_column,
+            max_entities=args.max_entities,
+            label_mappings=args.label_mappings,
+            remove_suffixes=args.remove_suffixes,
+            title=f"{args.entity_name} swimlanes",
+        )
+    except FileNotFoundError:
+        print(f"Error: File '{args.csv_file}' not found", file=sys.stderr)
+        return 1
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    stem = f"{args.entity_name.lower()}_swimlanes"
+    return _emit_lanes(timeline, args, figsize, color_scheme, stem, default_align="start")
+
+
+def _emit_lanes(timeline, args, figsize, color_scheme, stem, *, default_align):
+    """Render a lane timeline as an image or Mermaid, per --format / --align."""
+    if not timeline.events:
+        print("No events to plot. Check filters, columns and timestamps.", file=sys.stderr)
+        return 1
+    align = getattr(args, "align", "auto")
+    align = default_align if align == "auto" else align
+    threshold = args.threshold_days
+    if align == "start" and not getattr(args, "threshold_explicit", False):
+        threshold = None  # no breaks when every lane starts at 0, unless asked for
+    fmt = getattr(args, "output_format", "png")
+    lanes_wanted = getattr(args, "swimlanes", False)
+
+    try:
+        if fmt == "mmd":
+            text = to_mermaid(
+                timeline,
+                style=getattr(args, "mermaid_style", "sequence"),
+                align=align,
+                threshold_days=threshold,
+            )
+            if args.output_dir:
+                os.makedirs(args.output_dir, exist_ok=True)
+                write_mermaid(text, os.path.join(args.output_dir, f"{stem}.mmd"))
+            else:
+                sys.stdout.write(text)
+            return 0
+
+        output_file = None
+        if args.output_dir:
+            os.makedirs(args.output_dir, exist_ok=True)
+            output_file = os.path.join(args.output_dir, f"{stem}.{fmt}")
+        render = render_swimlanes if lanes_wanted else render_timeline
+        extra = {"align": align} if lanes_wanted else {}
+        render(
+            timeline,
+            threshold_days=threshold if threshold is not None else float("inf"),
+            figsize=figsize,
+            point_size=args.point_size,
+            color_scheme=color_scheme,
+            varying_height=args.varying_height,
+            output_file=output_file,
+            dpi=args.dpi,
+            show_plot=not args.no_show,
+            **extra,
+        )
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    print(
+        "Successfully generated swimlanes." if lanes_wanted else "Successfully generated timeline."
+    )
     return 0
 
 
