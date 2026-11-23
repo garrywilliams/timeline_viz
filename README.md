@@ -354,6 +354,10 @@ timelineviz examples/order_fulfilment.csv --id-column order_id --entity-name Ord
 
 [`docs/infographic-prompt.md`](https://github.com/garrywilliams/timeline_viz/blob/main/docs/infographic-prompt.md) is a hand-written brief built from the same facts, using a week-planner concept.
 
+![Illustrative executive infographic generated from the order swimlanes](https://raw.githubusercontent.com/garrywilliams/timeline_viz/main/images/order_fulfilment_infographic.png)
+
+*Illustrative, image-model output; markers not to scale. It was made from an earlier brief that included a time axis. The milestone markers drift from their true times (A-1004's payment was at +17h 43m, not near +1d), and the bottom sentence leaves out A-1004's longest wait, the 2d 23h delivery leg. The exact chart is [`images/swimlanes_orders.png`](https://raw.githubusercontent.com/garrywilliams/timeline_viz/main/images/swimlanes_orders.png) and the exact numbers are in [`examples/order_fulfilment.facts.md`](https://github.com/garrywilliams/timeline_viz/blob/main/examples/order_fulfilment.facts.md).*
+
 ## API Reference
 
 ### CSV Mode
