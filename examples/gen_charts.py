@@ -16,6 +16,10 @@ Writes to ``images/``:
   labels and multiple time breaks
 - ``raw_kubectl_log_timeline.png`` — raw kubectl-style timestamped logs via CLI parser
 - ``raw_timestamped_log_timeline.png`` — generic timestamp-first application logs
+- ``swimlanes_levels.png`` — raw application log, one lane per log level
+- ``swimlanes_orders.png`` — ``examples/order_fulfilment.csv``, one lane per order,
+  aligned to each order's first event
+- ``examples/swimlanes_levels.mmd`` — the log-level swimlanes as Mermaid source
 - ``timeline1.png`` — wide-format README hero (``examples/patient_journeys.csv``,
   first patient, with a time-gap break)
 """
@@ -234,5 +238,44 @@ plot_timeline(
     title="Patient Timeline - 12345",
     threshold_days=1,
     output_file=os.path.join(OUT_DIR, "timeline1.png"),
+    show_plot=False,
+)
+
+
+# Swimlanes: one lane per log level (absolute time) ...
+from timelineviz.model import timeline_from_event_log, timeline_from_wide_entities  # noqa: E402
+from timelineviz.render_mermaid import to_mermaid, write_mermaid  # noqa: E402
+from timelineviz.render_mpl import render_swimlanes  # noqa: E402
+
+levels = timeline_from_event_log(
+    _load_event_log_input(
+        os.path.join(EXAMPLES, "raw_timestamped_app.log"), raw_log_format="timestamped"
+    ),
+    "ts",
+    label_column="message",
+    lane_column="level",
+    title="Swimlanes: application log by level",
+)
+render_swimlanes(
+    levels,
+    threshold_days=0.1,
+    output_file=os.path.join(OUT_DIR, "swimlanes_levels.png"),
+    show_plot=False,
+)
+write_mermaid(
+    to_mermaid(levels, threshold_days=0.1),
+    os.path.join(EXAMPLES, "swimlanes_levels.mmd"),
+)
+
+# ... and one lane per entity, each aligned to its own first event
+orders = timeline_from_wide_entities(
+    os.path.join(EXAMPLES, "order_fulfilment.csv"),
+    id_column="order_id",
+    title="Swimlanes: orders aligned to the moment they were placed",
+)
+render_swimlanes(
+    orders,
+    align="start",
+    output_file=os.path.join(OUT_DIR, "swimlanes_orders.png"),
     show_plot=False,
 )

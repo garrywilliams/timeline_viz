@@ -151,7 +151,8 @@ src/timelineviz/
     _version.py       # Single source of truth for version
     model.py          # Event / Timeline data model + builders (wide, event log)
     layout.py         # Pure layout: clusters, panel geometry, collision-free label packing
-    render_mpl.py     # Matplotlib renderer for a Timeline
+    render_mpl.py     # Matplotlib renderers: render_timeline, render_swimlanes
+    render_mermaid.py # Mermaid sequence / gantt output (to_mermaid)
     timeline.py       # Public plotting API (thin wrappers over model → layout → render)
     promtest.py       # Prometheus test file parser + visualiser
     utils.py          # Shared helpers
@@ -161,6 +162,7 @@ src/timelineviz/
         test_model.py
         test_layout.py
         test_render_mpl.py
+        test_render_mermaid.py
         test_timeline.py
         test_promtest.py
         test_utils.py

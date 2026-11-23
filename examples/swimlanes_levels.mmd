@@ -1,0 +1,19 @@
+sequenceDiagram
+    title Swimlanes: application log by level
+    participant L0 as FATAL
+    participant L1 as ERROR
+    participant L2 as WARN
+    participant L3 as INFO
+    Note over L3: 09:00:01<br/>app.server Boot sequence started for deployment blue
+    Note over L3: 09:00:03<br/>app.server Cache primed with 128 configuration objects
+    Note over L2: 09:00:05<br/>app.queue Inbound queue depth crossed soft limit
+    Note over L1: 09:00:08<br/>app.queue Failed to publish invoice.created event
+    Note over L3: 09:00:14<br/>app.queue Replay worker drained backlog after retry
+    Note over L2: 09:00:27<br/>app.cache Cache miss rate exceeded warmup budget
+    Note over L3: 09:00:31<br/>app.cache Cache warmup completed
+    Note over L0,L3: +4h 42m later
+    Note over L3: 13:42:02<br/>app.reports Scheduled reporting window started
+    Note over L2: 13:42:18<br/>app.reports Report generation slowed by warehouse contention
+    Note over L0: 13:42:44<br/>app.reports Revenue summary export aborted by upstream timeout
+    Note over L3: 13:43:09<br/>app.reports Retry pipeline activated with reduced batch size
+    Note over L3: 13:43:38<br/>app.reports Export completed after fallback path
