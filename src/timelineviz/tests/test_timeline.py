@@ -924,3 +924,38 @@ def test_plot_timeline_applies_partial_color_scheme():
     points = [ln for ln in axs[0].lines if ln.get_marker() == "o"]
     assert to_hex(points[0].get_markerfacecolor()) == "#0000cc"
     plt.close(fig)
+
+
+def test_plot_multiple_timelines_uses_every_row_of_an_entity(monkeypatch):
+    # Patient 1 has two visits on separate rows; the second row's events
+    # (and the NaN in row one) must not be dropped.
+    df = pd.DataFrame(
+        {
+            "patient_id": [1, 1, 2],
+            "admitted_at": ["2024-01-01 08:00", "2024-01-10 09:00", "2024-02-01 10:00"],
+            "discharged_at": [None, "2024-01-12 17:00", "2024-02-03 11:00"],
+        }
+    )
+    captured = {}
+    real_plot = _plot_sorted_events
+
+    def spy(timestamps, labels, **kwargs):
+        captured[kwargs["entity_id"]] = (list(timestamps), list(labels))
+        return real_plot(timestamps, labels, **kwargs)
+
+    monkeypatch.setattr("timelineviz.timeline._plot_sorted_events", spy)
+    plot_multiple_timelines(
+        df,
+        timestamp_columns=["admitted_at", "discharged_at"],
+        id_column="patient_id",
+        show_plots=False,
+    )
+    ts1, labels1 = captured["1"]
+    assert labels1 == ["Admitted", "Admitted", "Discharged"]
+    assert ts1 == [
+        pd.Timestamp("2024-01-01 08:00"),
+        pd.Timestamp("2024-01-10 09:00"),
+        pd.Timestamp("2024-01-12 17:00"),
+    ]
+    assert captured["2"][1] == ["Admitted", "Discharged"]
+    plt.close("all")

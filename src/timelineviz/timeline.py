@@ -319,7 +319,9 @@ def plot_timeline(
     Parameters:
     -----------
     data : pandas.DataFrame or pandas.Series
-        Data containing timestamp columns
+        Data containing timestamp columns. A Series is one row. All rows of a
+        DataFrame are treated as a single entity: every non-null value in each
+        timestamp column becomes a point.
     timestamp_columns : list, optional
         List of column names containing timestamps to include in timeline
         If None, will attempt to auto-detect timestamp columns
@@ -374,26 +376,26 @@ def plot_timeline(
         print("No timestamp columns found or specified")
         return None, None
 
-    # Filter to include only columns that exist and have non-null values
-    valid_columns = []
+    # Collect every non-null value in each timestamp column. All rows of ``data``
+    # are treated as one entity, so an entity spread over several rows (e.g. one
+    # row per visit) contributes all of its events, not just the first row's.
     timestamps = []
     labels = []
 
     for col in timestamp_columns:
-        if col in data.columns and pd.notna(data[col].iloc[0]):
-            valid_columns.append(col)
-            # Parse the timestamp, ensuring consistent timezone handling
-            ts = parse_timestamps(data, col, normalize_tz=True).iloc[0]
+        if col not in data.columns:
+            continue
+        present = data.loc[data[col].notna(), [col]]
+        if present.empty:
+            continue
+
+        if label_mappings and col in label_mappings:
+            label = label_mappings[col]
+        else:
+            label = clean_column_name(col, remove_suffixes)
+
+        for ts in parse_timestamps(present, col, normalize_tz=True):
             timestamps.append(ts)
-
-            # Get label for the column
-            if label_mappings and col in label_mappings:
-                # Use custom label mapping if provided
-                label = label_mappings[col]
-            else:
-                # Otherwise clean the column name
-                label = clean_column_name(col, remove_suffixes)
-
             labels.append(label)
 
     if not timestamps:
