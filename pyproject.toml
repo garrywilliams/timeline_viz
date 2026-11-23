@@ -60,6 +60,8 @@ core-metadata-version = "2.4"
 
 [tool.hatch.build.targets.sdist]
 core-metadata-version = "2.4"
+# README images load from raw.githubusercontent.com, so the sdist does not need them.
+exclude = ["/images"]
 
 [tool.pytest.ini_options]
 testpaths = ["src/timelineviz/tests"]

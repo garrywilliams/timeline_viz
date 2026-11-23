@@ -4,7 +4,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/timelineviz)](https://pypi.org/project/timelineviz/)
 [![CI](https://github.com/garrywilliams/timeline_viz/actions/workflows/ci.yml/badge.svg)](https://github.com/garrywilliams/timeline_viz/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/garrywilliams/timeline_viz/blob/main/LICENSE)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/garrywilliams/timeline_viz)
+[![Ask DeepWiki](https://img.shields.io/badge/Ask-DeepWiki-blue)](https://deepwiki.com/garrywilliams/timeline_viz)
 
 Timelines, swimlanes and Mermaid diagrams from CSVs, logs and Prometheus test files.
 

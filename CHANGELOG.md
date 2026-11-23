@@ -34,6 +34,7 @@ First stable release. Function signatures are unchanged from 0.x; see "Changed" 
 - `date_rotation` now defaults to `0` (the concise date labels no longer need rotating).
 - Panel widths are proportional to the label space each panel needs, and break marks are aligned with the timeline.
 - `varying_height` still staggers labels, but it is no longer needed to avoid overlaps.
+- The sdist no longer bundles `images/` (3.1 MB → 205 KB). The README loads its images from GitHub.
 - Package status is now `Production/Stable`. The README is reorganised around the three inputs plus swimlanes and Mermaid, with an "Upgrading from 0.x" section.
 - The README's AI-generated healthcare infographic is replaced by [`docs/infographic-prompt.md`](docs/infographic-prompt.md), a reproducible brief built from the synthetic order data.
 
