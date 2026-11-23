@@ -15,7 +15,9 @@ Timeline visualisation for CSV data and Prometheus test files.
 
 - Plot event timelines from CSV / DataFrame timestamp data
 - **Long-format logs** — one timestamp column across many rows, with optional filters on level / event type (incident-style timelines)
-- Handle time gaps with broken timeline display
+- Handle time gaps with broken timeline display, each break labelled with the time skipped
+- Collision-free labels: boxes never overlap and connectors never cross another label, and the figure grows to fit
+- Date-aware time axis, plus PNG, SVG or PDF output
 - Auto-detect timestamp columns based on naming patterns
 - **Visualise Prometheus `promtool` unit-test files** — series values, eval checkpoints, and alert checks on a relative time axis
 - Customisable colour schemes
@@ -60,6 +62,9 @@ cat data.csv | timelineviz --timestamp-columns created_at updated_at completed_a
 
 # Add more visually staggered label bubbles
 timelineviz data.csv --timestamp-columns created_at updated_at completed_at --varying-height
+
+# Vector output, fixed 12in width (height still fits the labels)
+timelineviz data.csv -t created_at updated_at -o timelines --format svg --figsize 12
 ```
 
 ```python
@@ -81,6 +86,18 @@ plot_multiple_timelines(
     id_column="entity_id",
     output_dir="timeline_images",
 )
+```
+
+The plotting functions are wrappers over three building blocks you can also use directly: build a `Timeline` from your data, then render it.
+
+```python
+from timelineviz import Event, Timeline, render_timeline, timeline_from_wide
+
+timeline = timeline_from_wide(df.iloc[0], ["created_at", "updated_at", "completed_at"])
+# ...or assemble one by hand:
+timeline = Timeline([Event(pd.Timestamp("2024-01-01 09:00"), "Kick-off")], title="Project")
+
+render_timeline(timeline, output_file="timeline.svg", show_plot=False)
 ```
 
 ### Event log (long format)
@@ -187,7 +204,11 @@ Charts are self-documenting — each subplot shows the metric name and raw notat
 
 **Long format** (`plot_event_log_timeline` / `--event-log`): many rows share one timestamp column; each row is one point. Filters apply before plotting.
 
-In both cases, when time gaps exceed a threshold, the timeline is broken into segments with slash markers indicating the breaks.
+Both formats are converted into the same `Timeline` model, then drawn in three stages:
+
+1. **Model** (`timelineviz.model`): input rows become `Event`s (time plus label). Timestamps are normalised to UTC.
+2. **Layout** (`timelineviz.layout`): events are split into panels wherever a gap exceeds `threshold_days`. Each label box is then placed in the lowest free track above or below the line, either centred on its event or shifted left/right. A box never overlaps another box, and a connector never passes through another label. The figure height follows from the tallest stack.
+3. **Render** (`timelineviz.render_mpl`): matplotlib draws the panels, a date-aware time axis, and slash marks at each break labelled with the time skipped (e.g. `+3d 2h`). The output format follows the file extension.
 
 ### Promtest Timelines
 
@@ -224,10 +245,12 @@ The model can **redesign** the information as an infographic while you **verify*
 | `timestamp_columns` | Columns containing timestamp data to visualise |
 | `id_column` | Column that uniquely identifies each entity |
 | `threshold_days` | Time gap (in days) that triggers a timeline break |
-| `varying_height` | Stagger labels above/below the line at varying heights for a more visually layered layout |
+| `varying_height` | Stagger labels over several heights even where they would fit lower (labels never overlap either way) |
+| `figsize` | `None` (default): 15in wide, height fits the labels. `(w, None)`: fixed width. `(w, h)`: fixed size |
 | `entity_name` | Type name for titles (e.g. "Patient", "Order") |
 | `label_mappings` | Custom display names for timestamp columns |
-| `color_scheme` | Dictionary of colour overrides |
+| `color_scheme` | Colour overrides; any subset of `line`, `point_edge`, `point_face`, `connector`, `label_bg`, `label_edge`, `slashes`, `title` |
+| `output_file` / `output_format` | Save path (extension picks PNG/SVG/PDF) / format for `plot_multiple_timelines` and CLI `--format` |
 
 ### Promtest Mode
 

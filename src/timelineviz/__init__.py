@@ -16,6 +16,10 @@ Quick start::
     plot_event_log_timeline("incident.csv", "ts", label_column="message",
                             filter_column="level", include_values=["ERROR", "WARN"])
 
+    # Build a Timeline yourself, then render it
+    from timelineviz import timeline_from_wide, render_timeline
+    render_timeline(timeline_from_wide(df.iloc[0]), output_file="t.svg", show_plot=False)
+
     # Prometheus test files
     from timelineviz import parse_promtest_file, plot_promtest
     groups = parse_promtest_file("rules_test.yml")
@@ -29,6 +33,12 @@ try:
 except PackageNotFoundError:
     __version__ = "0.0.0.dev0"
 
+from timelineviz.model import (
+    Event,
+    Timeline,
+    timeline_from_event_log,
+    timeline_from_wide,
+)
 from timelineviz.promtest import (
     expand_values,
     find_gap_clusters,
@@ -37,6 +47,7 @@ from timelineviz.promtest import (
     parse_promtest_string,
     plot_promtest,
 )
+from timelineviz.render_mpl import render_timeline
 from timelineviz.timeline import (
     find_clusters,
     format_timestamp,
@@ -50,6 +61,11 @@ __all__ = [
     "plot_timeline",
     "plot_multiple_timelines",
     "plot_event_log_timeline",
+    "Event",
+    "Timeline",
+    "timeline_from_wide",
+    "timeline_from_event_log",
+    "render_timeline",
     "find_clusters",
     "format_timestamp",
     "parse_promtest_file",

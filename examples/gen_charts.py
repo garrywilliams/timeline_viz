@@ -16,6 +16,8 @@ Writes to ``images/``:
   labels and multiple time breaks
 - ``raw_kubectl_log_timeline.png`` — raw kubectl-style timestamped logs via CLI parser
 - ``raw_timestamped_log_timeline.png`` — generic timestamp-first application logs
+- ``timeline1.png`` — wide-format README hero (``examples/patient_journeys.csv``,
+  first patient, with a time-gap break)
 """
 
 import os
@@ -23,9 +25,11 @@ import os
 import matplotlib
 
 matplotlib.use("Agg")
+import pandas as pd
+
 from timelineviz.cli import _load_event_log_input
 from timelineviz.promtest import parse_promtest_file, parse_promtest_string, plot_promtest
-from timelineviz.timeline import plot_event_log_timeline
+from timelineviz.timeline import plot_event_log_timeline, plot_timeline
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 OUT_DIR = os.path.join(REPO_ROOT, "images")
@@ -167,7 +171,7 @@ plot_event_log_timeline(
     show_plot=False,
     output_file=os.path.join(OUT_DIR, "event_log_timeline.png"),
     dpi=150,
-    figsize=(14, 4),
+    figsize=(14, None),  # fixed width, height fits the labels
 )
 print("Saved event_log_timeline.png")
 
@@ -183,7 +187,7 @@ plot_event_log_timeline(
     show_plot=False,
     output_file=os.path.join(OUT_DIR, "event_log_timeline_breaks.png"),
     dpi=150,
-    figsize=(15, 5),
+    figsize=(15, None),
 )
 print("Saved event_log_timeline_breaks.png")
 
@@ -199,7 +203,7 @@ plot_event_log_timeline(
     show_plot=False,
     output_file=os.path.join(OUT_DIR, "raw_kubectl_log_timeline.png"),
     dpi=150,
-    figsize=(15, 5),
+    figsize=(15, None),
 )
 print("Saved raw_kubectl_log_timeline.png")
 
@@ -217,6 +221,18 @@ plot_event_log_timeline(
     show_plot=False,
     output_file=os.path.join(OUT_DIR, "raw_timestamped_log_timeline.png"),
     dpi=150,
-    figsize=(15, 5),
+    figsize=(15, None),
 )
 print("Saved raw_timestamped_log_timeline.png")
+
+
+# Wide format: one row per entity, one column per milestone (README hero image)
+patients = pd.read_csv(os.path.join(EXAMPLES, "patient_journeys.csv"))
+plot_timeline(
+    patients.iloc[[0]],
+    entity_id="12345",
+    title="Patient Timeline - 12345",
+    threshold_days=1,
+    output_file=os.path.join(OUT_DIR, "timeline1.png"),
+    show_plot=False,
+)

@@ -24,7 +24,8 @@ def test_parse_args_basic():
     assert args.csv_file == "data.csv"
     assert args.detect_timestamps is False
     assert args.output_dir is None
-    assert args.figsize == "15,5"  # Default value
+    assert args.figsize is None  # auto size
+    assert args.output_format == "png"
 
     # Test with output directory
     args = parse_args(["data.csv", "--output-dir", "output"])
@@ -1356,3 +1357,77 @@ def test_load_csv_input_translates_empty_data_error(monkeypatch):
     monkeypatch.setattr(cli_module.pd, "read_csv", raise_empty)
     with pytest.raises(ValueError, match="No CSV data received on stdin"):
         cli_module._load_csv_input("-")
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [(None, None), ("12", (12.0, None)), ("12,4", (12.0, 4.0))],
+)
+def test_parse_figsize_arg(value, expected):
+    assert cli_module._parse_figsize_arg(value) == expected
+
+
+def test_parse_args_figsize_width_only_and_errors():
+    assert parse_args(["data.csv", "--figsize", "12"]).figsize == "12"
+    with pytest.raises(SystemExit):
+        parse_args(["data.csv", "--figsize", "1,2,3"])
+
+
+@pytest.mark.parametrize("fmt", ["svg", "pdf"])
+def test_main_wide_output_format(tmp_path, fmt):
+    csv_path = tmp_path / "d.csv"
+    pd.DataFrame({"created_at": ["2024-01-01 10:00"], "done_at": ["2024-01-01 12:00"]}).to_csv(
+        csv_path, index=False
+    )
+    out = tmp_path / "out"
+    rc = main(
+        [
+            str(csv_path),
+            "-t",
+            "created_at",
+            "done_at",
+            "-o",
+            str(out),
+            "--format",
+            fmt,
+            "--no-show",
+            "--figsize",
+            "10",
+        ]
+    )
+    assert rc == 0
+    assert (out / f"entity_row_0_timeline.{fmt}").is_file()
+
+
+def test_main_event_log_output_format_svg(tmp_path):
+    csv_path = tmp_path / "log.csv"
+    csv_path.write_text("ts,msg\n2024-01-01 10:00:00,a\n2024-01-01 10:05:00,b\n")
+    out = tmp_path / "out"
+    rc = main(
+        [
+            str(csv_path),
+            "--event-log",
+            "--log-time-column",
+            "ts",
+            "--log-label-column",
+            "msg",
+            "-o",
+            str(out),
+            "--format",
+            "svg",
+            "--no-show",
+        ]
+    )
+    assert rc == 0
+    assert (out / "event_log_timeline.svg").read_text().lstrip().startswith("<?xml")
+
+
+def test_main_promtest_output_format_and_width_only_figsize(tmp_path):
+    yml = tmp_path / "t.yml"
+    yml.write_text("tests:\n  - input_series:\n      - series: 'up'\n        values: '1x3'\n")
+    out = tmp_path / "out"
+    rc = main(
+        [str(yml), "--promtest", "-o", str(out), "--format", "svg", "--figsize", "10", "--no-show"]
+    )
+    assert rc == 0
+    assert (out / "promtest.svg").is_file()
