@@ -13,6 +13,7 @@ Time model:
   All times are relative offsets from 0 (or a start_timestamp).
 """
 
+import os
 import re
 from collections import defaultdict
 from dataclasses import dataclass
@@ -1076,7 +1077,9 @@ def _draw_promtest_time_column(
 
     if has_alerts:
         ax_alert = column_axes[-1]
-        alert_names = list({ac.alertname for ac in group.alert_checks})
+        # First-appearance order: a set here would reorder rows between runs
+        # (string hashing is randomised per process), making output unstable.
+        alert_names = list(dict.fromkeys(ac.alertname for ac in group.alert_checks))
         alert_y = {name: i for i, name in enumerate(alert_names)}
 
         alert_draw_order = sorted(
@@ -1447,8 +1450,7 @@ def plot_promtest(
             _add_promtest_column_slashes(fig, bottom_row_for_slash, cs["slashes"])
 
         if output_file:
-            suffix = f"_{gi}" if len(groups) > 1 else ""
-            out = output_file.replace(".png", f"{suffix}.png") if len(groups) > 1 else output_file
+            out = _group_output_path(output_file, gi, len(groups))
             fig.savefig(out, bbox_inches="tight", dpi=dpi)
 
         show_or_close(fig, show_plot)
@@ -1456,6 +1458,18 @@ def plot_promtest(
         results.append((fig, flat_axes))
 
     return results
+
+
+def _group_output_path(output_file, group_index, n_groups):
+    """Per-group save path: ``out.svg`` → ``out_0.svg``, ``out_1.svg`` … for several groups.
+
+    Inserts the index before the real extension (any format, not only ``.png``),
+    so groups never overwrite each other. A single group keeps the path as given.
+    """
+    if n_groups <= 1:
+        return output_file
+    root, ext = os.path.splitext(output_file)
+    return f"{root}_{group_index}{ext}"
 
 
 def _add_legend_key(fig, cs, has_evals, has_alerts, has_gaps, has_stale):

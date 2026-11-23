@@ -733,3 +733,92 @@ class TestLabelLayoutValidate:
     def test_bad(self):
         with pytest.raises(ValueError):
             _promtest_label_layout_validate("wide")
+
+
+_MANY_ALERTS_YAML = """\
+evaluation_interval: 1m
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'up{job="api"}'
+        values: '1x10'
+    alert_rule_test:
+""" + "".join(
+    f"      - eval_time: {i + 1}m\n        alertname: {name}\n        exp_alerts: []\n"
+    for i, name in enumerate(["Zeta", "Alpha", "Mike", "Bravo", "Yankee", "Charlie", "Delta"])
+)
+
+
+def test_alert_rows_follow_first_appearance_order():
+    import matplotlib.pyplot as plt
+
+    groups = parse_promtest_string(_MANY_ALERTS_YAML)
+    ((fig, axes),) = plot_promtest(groups, show_plot=False)
+    alert_ax = axes[-1]
+    names = [t.get_text() for t in alert_ax.get_yticklabels()]
+    assert names == ["Zeta", "Alpha", "Mike", "Bravo", "Yankee", "Charlie", "Delta"]
+    plt.close(fig)
+
+
+def test_alert_row_order_is_stable_across_hash_seeds():
+    """Row order must not depend on PYTHONHASHSEED (set iteration order)."""
+    import os
+    import subprocess
+    import sys
+
+    script = (
+        "import matplotlib; matplotlib.use('Agg');"
+        "import sys;"
+        "from timelineviz.promtest import parse_promtest_string, plot_promtest;"
+        "(fig, axes), = plot_promtest(parse_promtest_string(sys.stdin.read()), show_plot=False);"
+        "print(','.join(t.get_text() for t in axes[-1].get_yticklabels()))"
+    )
+    orders = set()
+    for seed in ("0", "1", "2", "3"):
+        env = {**os.environ, "PYTHONHASHSEED": seed}
+        out = subprocess.run(
+            [sys.executable, "-c", script],
+            input=_MANY_ALERTS_YAML,
+            capture_output=True,
+            text=True,
+            env=env,
+            check=True,
+        )
+        orders.add(out.stdout.strip())
+    assert len(orders) == 1
+
+
+@pytest.mark.parametrize(
+    "path,n,expected",
+    [
+        ("out.png", 1, ["out.png"]),
+        ("out.png", 2, ["out_0.png", "out_1.png"]),
+        ("out.svg", 2, ["out_0.svg", "out_1.svg"]),
+        ("dir.v2/out.pdf", 2, ["dir.v2/out_0.pdf", "dir.v2/out_1.pdf"]),
+        ("out", 2, ["out_0", "out_1"]),
+    ],
+)
+def test_group_output_path(path, n, expected):
+    from timelineviz.promtest import _group_output_path
+
+    assert [_group_output_path(path, i, n) for i in range(n)] == expected
+
+
+def test_multi_group_svg_output_writes_one_file_per_group(tmp_path):
+    import matplotlib.pyplot as plt
+
+    yaml_two_groups = """\
+tests:
+  - name: one
+    input_series:
+      - series: 'a'
+        values: '1x3'
+  - name: two
+    input_series:
+      - series: 'b'
+        values: '2x3'
+"""
+    out = tmp_path / "promtest.svg"
+    plot_promtest(parse_promtest_string(yaml_two_groups), show_plot=False, output_file=str(out))
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["promtest_0.svg", "promtest_1.svg"]
+    plt.close("all")
