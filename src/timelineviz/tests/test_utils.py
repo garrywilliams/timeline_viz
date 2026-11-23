@@ -364,17 +364,22 @@ def test_parse_timestamps_timezone_handling():
     result = parse_timestamps(df, "ts", normalize_tz=True)
     assert result.dt.tz is None  # Should be timezone-naive
 
-    # Test with mixed timezone data
-    df = pd.DataFrame(
-        {
-            "ts": [
-                "2024-01-01T10:00:00+00:00",  # With timezone
-                "2024-01-02T15:30:00+00:00",  # With timezone
-            ]
-        }
-    )
+    # Non-UTC offsets are converted to UTC, not just stripped
+    df = pd.DataFrame({"ts": ["2024-06-01T10:00:00+02:00"]})
     result = parse_timestamps(df, "ts", normalize_tz=True)
-    assert result.dt.tz is None  # Should all be timezone-naive
+    assert result.dt.tz is None
+    assert result.iloc[0] == pd.Timestamp("2024-06-01 08:00:00")
+
+    # Mixed offsets in one column keep true chronological order:
+    # 10:00+02:00 (08:00Z) happens before 09:00+00:00 (09:00Z)
+    df = pd.DataFrame({"ts": ["2024-06-01T09:00:00+00:00", "2024-06-01T10:00:00+02:00"]})
+    result = parse_timestamps(df, "ts", normalize_tz=True)
+    assert result.dt.tz is None
+    assert list(result) == [
+        pd.Timestamp("2024-06-01 09:00:00"),
+        pd.Timestamp("2024-06-01 08:00:00"),
+    ]
+    assert result.iloc[1] < result.iloc[0]
 
     # Test with all naive timestamps
     df = pd.DataFrame(

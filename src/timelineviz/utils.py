@@ -88,7 +88,10 @@ def parse_timestamps(df, column, normalize_tz=False, errors="raise"):
     column : str
         Name of column containing timestamps
     normalize_tz : bool, default=False
-        If True, converts timezone-aware timestamps to timezone-naive
+        If True, convert every timestamp to UTC and return timezone-naive values.
+        Values carrying an offset (``+01:00``, ``Z``) are converted to UTC first, so
+        rows with different offsets stay in true chronological order. Naive values
+        are assumed to already be UTC and are left unchanged.
     errors : str, default='raise'
         How to handle parsing errors:
         - 'raise': raise exception
@@ -105,16 +108,14 @@ def parse_timestamps(df, column, normalize_tz=False, errors="raise"):
     if errors == "ignore":
         return timestamp_series
 
-    # Try to parse timestamps
-    ts_series = pd.to_datetime(timestamp_series, errors=errors)
+    if normalize_tz:
+        # utc=True converts offset-aware values to UTC (and copes with mixed
+        # offsets in one column); naive values are treated as UTC. Dropping the
+        # tz afterwards keeps the UTC wall-clock rather than the local one.
+        ts_series = pd.to_datetime(timestamp_series, errors=errors, utc=True)
+        return ts_series.dt.tz_localize(None)
 
-    # Handle timezone normalization
-    if normalize_tz and not ts_series.isna().all():
-        # Only check timezone if we have valid timestamps
-        if ts_series.dt.tz is not None:
-            ts_series = ts_series.dt.tz_localize(None)
-
-    return ts_series
+    return pd.to_datetime(timestamp_series, errors=errors)
 
 
 def create_color_scheme(base_color=None, accent_color=None):

@@ -888,3 +888,22 @@ def test_plot_event_log_timeline_from_csv(tmp_path):
     )
     assert isinstance(fig, plt.Figure)
     plt.close(fig)
+
+
+def _annotation_labels(axs):
+    """First line of every event label, in drawn (chronological) order."""
+    return [t.get_text().split("\n")[0] for ax in axs for t in ax.texts]
+
+
+def test_plot_timeline_orders_columns_with_different_offsets_by_utc():
+    # 10:00+02:00 is 08:00Z, so "Shipped" happens before "Created" (09:00Z).
+    row = pd.Series(
+        {
+            "created_at": "2024-06-01T09:00:00+00:00",
+            "shipped_at": "2024-06-01T10:00:00+02:00",
+        }
+    )
+    fig, axs = plot_timeline(row, ["created_at", "shipped_at"], show_plot=False)
+    assert _annotation_labels(axs) == ["Shipped", "Created"]
+    assert "2024-06-01 08:00:00.000" in axs[0].texts[0].get_text()
+    plt.close(fig)
