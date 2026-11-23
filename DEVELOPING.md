@@ -149,12 +149,18 @@ sequenceDiagram
 src/timelineviz/
     __init__.py       # Public API re-exports
     _version.py       # Single source of truth for version
-    timeline.py       # CSV/DataFrame visualisation
+    model.py          # Event / Timeline data model + builders (wide, event log)
+    layout.py         # Pure layout: clusters, panel geometry, collision-free label packing
+    render_mpl.py     # Matplotlib renderer for a Timeline
+    timeline.py       # Public plotting API (thin wrappers over model → layout → render)
     promtest.py       # Prometheus test file parser + visualiser
     utils.py          # Shared helpers
     cli.py            # CLI entry point (wide CSV, --event-log, --promtest)
     py.typed          # PEP 561 marker
     tests/
+        test_model.py
+        test_layout.py
+        test_render_mpl.py
         test_timeline.py
         test_promtest.py
         test_utils.py

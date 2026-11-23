@@ -7,8 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `Event` / `Timeline` data model (`timelineviz.model`) with `timeline_from_wide` and `timeline_from_event_log` builders, and `render_timeline` to draw any `Timeline`. All are exported from `timelineviz`.
+- Collision-free label layout (`timelineviz.layout`): label boxes never overlap, connectors never cross another label, and boxes stay inside their panel. The figure height grows to fit.
+- Timeline breaks are labelled with the time skipped (e.g. `+3d 2h`).
+- CLI `--format png|svg|pdf` and `output_format=` on `plot_multiple_timelines`. `output_file` already picked the format from its extension.
+- `examples/patient_journeys.csv`; `make example-charts` now regenerates the README hero image too.
+
+### Changed
+
+- Timelines use a date-aware time axis (`ConciseDateFormatter`) along the bottom, with light gridlines, instead of two `HH:MM:SS` ticks per panel drawn on the timeline itself.
+- `figsize` now defaults to `None`: 15in wide, height fitted to the labels. Pass `(width, None)` to fix only the width. CLI `--figsize` accepts `W` or `W,H` and defaults to auto.
+- `date_rotation` now defaults to `0` (the concise date labels no longer need rotating).
+- Panel widths are proportional to the label space each panel needs, and break marks are aligned with the timeline.
+- `varying_height` still staggers labels, but it is no longer needed to avoid overlaps.
+
 ### Fixed
 
+- `$` in labels (e.g. log messages) is shown literally instead of being parsed as mathtext.
 - Timestamps with UTC offsets are now converted to UTC instead of having the offset dropped, so events recorded in different offsets plot in true chronological order.
 - `--colors` / `color_scheme` now honour every key and accept partial schemes (unspecified keys use the defaults). Previously the CLI required all eight keys but used only `line` and `point_face`, and a partial dict through the API raised `KeyError`. Unknown keys and invalid colours are now reported as errors.
 - Wide mode with `--id-column`: an entity spread across several rows now shows the events from every row, not just the first.
