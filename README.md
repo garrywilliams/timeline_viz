@@ -6,25 +6,25 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/garrywilliams/timeline_viz/blob/main/LICENSE)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/garrywilliams/timeline_viz)
 
-Timeline visualisation for CSV data and Prometheus test files.
+Timelines, swimlanes and Mermaid diagrams from CSVs, logs and Prometheus test files.
+
+Point it at a CSV of milestones, an application log or a `promtool` test file and get a readable chart: labels that never collide, time gaps collapsed and labelled, and output as PNG, SVG, PDF, Mermaid text, or a plain-text facts block you can paste into a write-up or an image-model brief.
 
 <!-- Image URLs use raw.githubusercontent.com so they render on PyPI; branch must match default (main). -->
 ![Example CSV timeline (wide format, with a time-gap break)](https://raw.githubusercontent.com/garrywilliams/timeline_viz/main/images/timeline1.png)
 
+![Swimlanes: orders aligned to the moment they were placed](https://raw.githubusercontent.com/garrywilliams/timeline_viz/main/images/swimlanes_orders.png)
+
 ## Features
 
-- Plot event timelines from CSV / DataFrame timestamp data
-- **Long-format logs** — one timestamp column across many rows, with optional filters on level / event type (incident-style timelines)
-- Handle time gaps with broken timeline display, each break labelled with the time skipped
-- Collision-free labels: boxes never overlap and connectors never cross another label, and the figure grows to fit
-- Date-aware time axis, plus PNG, SVG or PDF output
-- Auto-detect timestamp columns based on naming patterns
-- **Visualise Prometheus `promtool` unit-test files** — series values, eval checkpoints, and alert checks on a relative time axis
-- **Swimlanes**: one lane per log level, service or entity, on a shared clock or aligned to each lane's start
-- **Mermaid output** (`--format mmd`): sequence or gantt diagrams that render natively in GitHub / GitLab markdown
-- Customisable colour schemes
-- CLI and Python API
-- **Optional next step:** use saved PNGs (plus your CSV or milestone list) as input to **multimodal / image-generation LLMs** to produce executive-style infographics — see below
+- **Three inputs:** wide CSVs (one column per milestone), long-format event logs (one row per event, from CSV or raw text logs such as `kubectl logs`), and Prometheus `promtool` unit-test YAML.
+- **Swimlanes:** one lane per log level, service or entity, on a shared clock or with every lane aligned to its own start.
+- **Mermaid output** (`--format mmd`): sequence or gantt diagrams that render natively in GitHub, GitLab, Notion and Obsidian.
+- **Facts** (`--format facts`): every event, duration and comparison as exact Markdown or JSON. Use it to brief a writer or an image model without numbers drifting.
+- **Readable by construction:** label boxes never overlap and connectors never cross another label. The figure grows to fit.
+- **Time breaks:** long gaps are collapsed and labelled with the time skipped (`+3d 2h`).
+- **Date-aware axis**, colour-blind-safe lane palette, status colours for log levels, and customisable colour schemes.
+- PNG, SVG or PDF output; reads files or stdin; CLI and Python API.
 
 ## Installation
 
@@ -47,6 +47,17 @@ make precommit-install
 ```
 
 Run `make` or `make help` for tests, linting, builds, and other tasks. CI, release, and maintainer setup details live in [DEVELOPING.md](https://github.com/garrywilliams/timeline_viz/blob/main/DEVELOPING.md).
+
+## Upgrading from 0.x
+
+1.0 keeps every 0.x function signature, but a few defaults and behaviours changed:
+
+- `figsize` now defaults to `None`: 15in wide with the height fitted to the labels (was `(15, 5)`). Pass `(w, None)` to fix only the width. CLI `--figsize` takes `W` or `W,H`.
+- `date_rotation` now defaults to `0` (was `45`).
+- Timestamps with UTC offsets are converted to UTC instead of having the offset dropped, so events can move if your data mixes offsets.
+- `color_scheme` / `--colors` accept a partial scheme and reject unknown keys or invalid colours with an error.
+
+See the [CHANGELOG](https://github.com/garrywilliams/timeline_viz/blob/main/CHANGELOG.md) for everything else.
 
 ## Quick Start
 
@@ -238,6 +249,44 @@ sequenceDiagram
     Note over L3: 13:43:38<br/>Export completed after fallback path
 ```
 
+### Facts and briefs
+
+`--format facts` (or `to_facts()` in Python) states what the chart shows as exact text. For each lane it lists every event with date, weekday, time, time since the lane started and time since the previous event. Entity lanes then get a comparison: median, fastest, slowest, the longest single stage, and a table of every stage the lanes share. Log-level lanes or a single timeline get the largest quiet periods instead. Durations are rounded to two units (`1d 23h`). `--format facts-json` gives the same as JSON.
+
+```bash
+timelineviz examples/order_fulfilment.csv --id-column order_id --entity-name Order \
+  --swimlanes --format facts
+```
+
+An extract from [`examples/order_fulfilment.facts.md`](https://github.com/garrywilliams/timeline_viz/blob/main/examples/order_fulfilment.facts.md):
+
+```markdown
+## A-1004
+
+Elapsed 5d 23h, Fri 7 Mar 2025 16:20 to Thu 13 Mar 2025 15:35.
+
+- Placed: Fri 7 Mar 2025 16:20 (start)
+- Paid: Sat 8 Mar 2025 10:02, +17h 43m (17h 43m after Placed)
+- Picked: Mon 10 Mar 2025 09:30, +2d 17h (1d 23h after Paid)
+- Shipped: Mon 10 Mar 2025 17:05, +3d 1h (7h 35m after Picked)
+- Delivered: Thu 13 Mar 2025 15:35, +5d 23h (2d 23h after Shipped)
+
+## Comparison of 5 lanes
+
+- Median elapsed: 1d 16h
+- Fastest: A-1003, 22h 43m
+- Slowest: A-1004, 5d 23h
+- Longest single stage: A-1004, Shipped → Delivered, 2d 23h
+```
+
+```python
+from timelineviz import fill_brief, timeline_facts, timeline_from_wide_entities, to_facts
+
+orders = timeline_from_wide_entities("examples/order_fulfilment.csv", id_column="order_id")
+print(to_facts(orders))  # Markdown
+timeline_facts(orders)["comparison"]  # the same facts as a dict
+```
+
 ### Prometheus Test Timelines
 
 Visualise `promtool` unit-test YAML files — see series values change over time, where evaluations happen, and when alerts fire.
@@ -247,7 +296,7 @@ timelineviz examples/promtest_label_minimal.yml --promtest
 timelineviz examples/promtest_label_minimal.yml --promtest --output-dir images --no-show
 ```
 
-Replace the path with your own promtool unit-test YAML when needed. Checked-in examples live under [`examples/`](examples/).
+Replace the path with your own promtool unit-test YAML when needed. Checked-in examples live under [`examples/`](https://github.com/garrywilliams/timeline_viz/tree/main/examples).
 
 ```python
 from timelineviz import parse_promtest_file, plot_promtest
@@ -288,19 +337,26 @@ Prometheus test files define metric series as values over discrete time steps (e
 
 Optional **`break_gap_minutes`** / CLI **`--promtest-break-gap`**: when gaps between anchors (`0`, series end, each eval/alert time) exceed that many minutes, the chart splits into **multiple horizontal panels** with slash markers—same idea as CSV **`threshold_days`** breaks. See [PROMTEST.md](https://github.com/garrywilliams/timeline_viz/blob/main/PROMTEST.md) and [`examples/promtest_time_breaks.yml`](https://github.com/garrywilliams/timeline_viz/blob/main/examples/promtest_time_breaks.yml).
 
-## From chart output to executive infographics
+## From chart output to executive summaries
 
-`timelineviz` is built for **faithful, technical** timelines (PNG from the CLI or `output_file=` in Python). For **stakeholder decks**, **board summaries**, or **comms**, you can treat that output as **source material** for a second step: a **multimodal or image-focused LLM** (any tool that accepts an image plus a long text brief—e.g. **Nano Banana** or similar) together with:
+`timelineviz` draws faithful, technical timelines. For a stakeholder deck you can turn one into an infographic with a multimodal image model. The workflow:
 
-- The **exported PNG** (or a screenshot of the figure)
-- Your **structured facts**: ordered milestones, dates, short business descriptions, KPIs, risks, and the story you want told
-- A **detailed creative prompt** (audience, tone, layout, colour rules, and what *not* to invent)
+1. **Plot** the timeline. That chart stays the record.
+2. **Generate the facts** with `--format facts`. Image models copy written numbers faithfully but drift when they copy positions from a chart.
+3. **Fill a brief** with `--brief-template FILE`, which replaces `{{facts}}` and `{{title}}` in your template. [`docs/brief-template.md`](https://github.com/garrywilliams/timeline_viz/blob/main/docs/brief-template.md) is a starting point: it forbids invented facts and asks for a design without a time axis.
+4. **Attach the chart only as context**, or leave it out, so the model doesn't copy its geometry.
+5. **Check** every number in the image against the facts, and label it illustrative.
 
-The model can **redesign** the information as an infographic while you **verify** dates, labels, and numbers against your data. The sample below is an **illustrative** executive layout (sample healthcare journey) produced from that kind of workflow—not something `timelineviz` renders by itself.
+```bash
+timelineviz examples/order_fulfilment.csv --id-column order_id --entity-name Order \
+  --swimlanes --format facts --brief-template docs/brief-template.md > brief.md
+```
 
-![Example executive infographic derived from timeline-style data and an LLM brief](https://raw.githubusercontent.com/garrywilliams/timeline_viz/main/images/executive_infographic_example.png)
+[`docs/infographic-prompt.md`](https://github.com/garrywilliams/timeline_viz/blob/main/docs/infographic-prompt.md) is a hand-written brief built from the same facts, using a week-planner concept.
 
-*Example only: narrative layout, icons, and insight rail were generated for communication design; always validate facts against your source CSV and plots.*
+![Illustrative executive infographic generated from the order swimlanes](https://raw.githubusercontent.com/garrywilliams/timeline_viz/main/images/order_fulfilment_infographic.png)
+
+*Illustrative, image-model output; markers not to scale. It was made from an earlier brief that included a time axis. The milestone markers drift from their true times (A-1004's payment was at +17h 43m, not near +1d), and the bottom sentence leaves out A-1004's longest wait, the 2d 23h delivery leg. The exact chart is [`images/swimlanes_orders.png`](https://raw.githubusercontent.com/garrywilliams/timeline_viz/main/images/swimlanes_orders.png) and the exact numbers are in [`examples/order_fulfilment.facts.md`](https://github.com/garrywilliams/timeline_viz/blob/main/examples/order_fulfilment.facts.md).*
 
 ## API Reference
 
@@ -317,6 +373,19 @@ The model can **redesign** the information as an infographic while you **verify*
 | `label_mappings` | Custom display names for timestamp columns |
 | `color_scheme` | Colour overrides; any subset of `line`, `point_edge`, `point_face`, `connector`, `label_bg`, `label_edge`, `slashes`, `title` |
 | `output_file` / `output_format` | Save path (extension picks PNG/SVG/PDF) / format for `plot_multiple_timelines` and CLI `--format` |
+
+### Swimlanes, Mermaid and facts
+
+| Parameter | Description |
+|-----------|-------------|
+| `lane_column` | `timeline_from_event_log`: column whose value names each event's lane (CLI `--lane-column`; raw logs default to `level`) |
+| `id_column` | `timeline_from_wide_entities`: one lane per value (or per row when omitted) |
+| `align` | `"absolute"`: shared clock. `"start"`: each lane starts at 0 and the axis shows elapsed time. CLI `--align auto` picks `start` for entities |
+| `lane_order` / `lane_colors` | Lane order top to bottom / per-lane colour overrides. Defaults: severity order for log levels, otherwise first seen |
+| `format` | `to_facts`: `"markdown"` (default) or `"json"` (CLI `--format facts` / `facts-json`) |
+| `compare_lanes` | `timeline_facts` / `to_facts`: include the lane comparison. Default: on for two or more lanes that are not log levels |
+| `style` | `to_mermaid`: `"sequence"` (default) or `"gantt"` (CLI `--mermaid-style`) |
+| `threshold_days` | Swimlanes: gap that triggers a shared break. Mermaid sequence: gap that adds a "+gap later" note |
 
 ### Promtest Mode
 

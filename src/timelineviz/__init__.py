@@ -1,4 +1,4 @@
-"""timelineviz — Timeline visualisation for CSV data and Prometheus test files.
+"""timelineviz — Timelines, swimlanes and Mermaid diagrams from CSVs, logs and Prometheus test files.
 
 Create timeline charts from any timestamp data, or visualise promtool
 unit-test YAML files with annotated step charts.
@@ -20,6 +20,10 @@ Quick start::
     from timelineviz import timeline_from_wide, render_timeline
     render_timeline(timeline_from_wide(df.iloc[0]), output_file="t.svg", show_plot=False)
 
+    # Exact facts as Markdown, e.g. to brief a writer or an image model
+    from timelineviz import timeline_from_wide_entities, to_facts
+    print(to_facts(timeline_from_wide_entities("orders.csv", id_column="order_id")))
+
     # Prometheus test files
     from timelineviz import parse_promtest_file, plot_promtest
     groups = parse_promtest_file("rules_test.yml")
@@ -33,6 +37,7 @@ try:
 except PackageNotFoundError:
     __version__ = "0.0.0.dev0"
 
+from timelineviz.facts import fill_brief, timeline_facts, to_facts
 from timelineviz.model import (
     Event,
     Timeline,
@@ -71,6 +76,9 @@ __all__ = [
     "render_swimlanes",
     "timeline_from_wide_entities",
     "to_mermaid",
+    "timeline_facts",
+    "to_facts",
+    "fill_brief",
     "find_clusters",
     "format_timestamp",
     "parse_promtest_file",

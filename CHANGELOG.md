@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-23
+
+First stable release. Function signatures are unchanged from 0.x; see "Changed" and the README's "Upgrading from 0.x" for defaults that moved.
+
 ### Added
 
 - **Swimlanes:** `render_swimlanes()` and CLI `--swimlanes` draw one lane per `Event.lane`, with breaks shared by all lanes and lane names in a left gutter.
@@ -14,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   - Entities: `timeline_from_wide_entities()`; in the CLI, `--swimlanes` on wide CSV gives one lane per `--id-column` value (or per row).
   - `align="start"` / `--align start` aligns each lane to its first event and shows elapsed time (`+1h 30m`). It is the default for entities, and has no breaks unless `--threshold-days` is given.
 - **Mermaid output:** `to_mermaid()` and `--format mmd` (stdout without `-o`, `.mmd` file with it), as a `sequenceDiagram` (default) or `gantt` (`--mermaid-style gantt`).
+- **Facts:** `to_facts()` / `timeline_facts()` and `--format facts` / `facts-json` state every event, duration and lane comparison (median, fastest, slowest, per-stage table) as exact Markdown or JSON. Log-level lanes get the largest gaps instead.
+- **Briefs:** `fill_brief()` and `--brief-template FILE` fill `{{facts}}` / `{{title}}` in a template, e.g. a brief for an image model. `docs/brief-template.md` is a starting template and `docs/infographic-prompt.md` a worked example. Unknown placeholders are an error.
 - `examples/order_fulfilment.csv` (synthetic) and `examples/swimlanes_levels.mmd`; `make example-charts` also renders `swimlanes_levels.png` and `swimlanes_orders.png`.
 - `Event` / `Timeline` data model (`timelineviz.model`) with `timeline_from_wide` and `timeline_from_event_log` builders, and `render_timeline` to draw any `Timeline`. All are exported from `timelineviz`.
 - Collision-free label layout (`timelineviz.layout`): label boxes never overlap, connectors never cross another label, and boxes stay inside their panel. The figure height grows to fit.
@@ -28,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `date_rotation` now defaults to `0` (the concise date labels no longer need rotating).
 - Panel widths are proportional to the label space each panel needs, and break marks are aligned with the timeline.
 - `varying_height` still staggers labels, but it is no longer needed to avoid overlaps.
+- Package status is now `Production/Stable`. The README is reorganised around the three inputs plus swimlanes and Mermaid, with an "Upgrading from 0.x" section.
+- The README's AI-generated healthcare infographic is replaced by [`docs/infographic-prompt.md`](docs/infographic-prompt.md), a reproducible brief built from the synthetic order data.
 
 ### Fixed
 

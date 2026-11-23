@@ -14,6 +14,7 @@ import sys
 
 import pandas as pd
 
+from timelineviz.facts import fill_brief, to_facts
 from timelineviz.model import timeline_from_event_log, timeline_from_wide_entities
 from timelineviz.promtest import parse_promtest_file, parse_promtest_string, plot_promtest
 from timelineviz.render_mermaid import to_mermaid, write_mermaid
@@ -23,6 +24,8 @@ from timelineviz.timeline import (
     plot_multiple_timelines,
 )
 from timelineviz.utils import detect_timestamp_columns, resolve_color_scheme
+
+TEXT_FORMATS = ("mmd", "facts", "facts-json")
 
 
 def parse_args(args=None):
@@ -73,6 +76,11 @@ Example usage:
 
   # Mermaid (renders in GitHub/GitLab markdown); printed to stdout without -o:
   timelineviz app.log --event-log --raw-log-format auto --swimlanes --format mmd
+
+  # Exact facts (Markdown) for a write-up or an image-model brief:
+  timelineviz orders.csv --id-column order_id --swimlanes --format facts
+  timelineviz orders.csv --id-column order_id --swimlanes --format facts \\
+    --brief-template docs/brief-template.md > brief.md
 """,
     )
 
@@ -128,10 +136,17 @@ Example usage:
     parser.add_argument(
         "--format",
         dest="output_format",
-        choices=("png", "svg", "pdf", "mmd"),
+        choices=("png", "svg", "pdf", *TEXT_FORMATS),
         default="png",
-        help="Output format (default: png). 'mmd' writes Mermaid source, or prints it to "
-        "stdout when --output-dir is not given; needs --event-log or --swimlanes",
+        help="Output format (default: png). Text formats are printed to stdout when "
+        "--output-dir is not given, and need --event-log or --swimlanes: 'mmd' Mermaid "
+        "source, 'facts' exact facts as Markdown, 'facts-json' the same as JSON",
+    )
+    parser.add_argument(
+        "--brief-template",
+        metavar="FILE",
+        help="With --format facts: fill this template's {{facts}} (and {{title}}) "
+        "placeholders and output the result, e.g. a brief for an image model",
     )
 
     parser.add_argument(
@@ -287,14 +302,18 @@ Example usage:
         if not args.event_log:
             parser.error("--lane-column requires --event-log")
         args.swimlanes = True
-    if args.promtest and (args.swimlanes or args.output_format == "mmd"):
-        parser.error("--swimlanes and --format mmd are not available with --promtest")
+    if args.promtest and (args.swimlanes or args.output_format in TEXT_FORMATS):
+        parser.error(
+            f"--swimlanes and --format {args.output_format} are not available with --promtest"
+        )
     if args.swimlanes and args.event_log and not args.lane_column:
         if not args.log_filter_column:
             parser.error("--swimlanes with --event-log needs --lane-column")
         args.lane_column = args.log_filter_column
-    if args.output_format == "mmd" and not (args.event_log or args.swimlanes):
-        parser.error("--format mmd requires --event-log or --swimlanes")
+    if args.output_format in TEXT_FORMATS and not (args.event_log or args.swimlanes):
+        parser.error(f"--format {args.output_format} requires --event-log or --swimlanes")
+    if args.brief_template and args.output_format != "facts":
+        parser.error("--brief-template requires --format facts")
 
     return args
 
@@ -577,7 +596,7 @@ def _run_event_log(args):
     if err:
         return err
 
-    if getattr(args, "swimlanes", False) or getattr(args, "output_format", "png") == "mmd":
+    if getattr(args, "swimlanes", False) or getattr(args, "output_format", "png") in TEXT_FORMATS:
         return _run_event_log_lanes(args, figsize, color_scheme)
 
     output_file = None
@@ -627,7 +646,7 @@ def _run_event_log(args):
 
 
 def _run_event_log_lanes(args, figsize, color_scheme):
-    """--event-log with --swimlanes and/or --format mmd."""
+    """--event-log with --swimlanes and/or a text format (mmd, facts)."""
     lane_column = getattr(args, "lane_column", None) if getattr(args, "swimlanes", False) else None
     try:
         input_data = _load_event_log_input(args.csv_file, raw_log_format=args.raw_log_format)
@@ -711,6 +730,8 @@ def _emit_lanes(timeline, args, figsize, color_scheme, stem, *, default_align):
             else:
                 sys.stdout.write(text)
             return 0
+        if fmt in ("facts", "facts-json"):
+            return _emit_facts(timeline, args, stem, fmt)
 
         output_file = None
         if args.output_dir:
@@ -736,6 +757,31 @@ def _emit_lanes(timeline, args, figsize, color_scheme, stem, *, default_align):
     print(
         "Successfully generated swimlanes." if lanes_wanted else "Successfully generated timeline."
     )
+    return 0
+
+
+def _emit_facts(timeline, args, stem, fmt):
+    """Write --format facts / facts-json, optionally through --brief-template."""
+    text = to_facts(timeline, format="json" if fmt == "facts-json" else "markdown")
+    suffix = "facts.json" if fmt == "facts-json" else "facts.md"
+    template_path = getattr(args, "brief_template", None)
+    if template_path:
+        try:
+            with open(template_path, encoding="utf-8") as f:
+                template = f.read()
+        except OSError as e:
+            print(f"Error: cannot read brief template: {e}", file=sys.stderr)
+            return 1
+        text = fill_brief(template, text, title=timeline.title)
+        suffix = "brief.md"
+    if args.output_dir:
+        os.makedirs(args.output_dir, exist_ok=True)
+        path = os.path.join(args.output_dir, f"{stem}.{suffix}")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(text)
+        print(f"Saved {'brief' if template_path else 'facts'} to {path}")
+    else:
+        sys.stdout.write(text)
     return 0
 
 
