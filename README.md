@@ -6,25 +6,24 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/garrywilliams/timeline_viz/blob/main/LICENSE)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/garrywilliams/timeline_viz)
 
-Timeline visualisation for CSV data and Prometheus test files.
+Timelines, swimlanes and Mermaid diagrams from CSVs, logs and Prometheus test files.
+
+Point it at a CSV of milestones, an application log or a `promtool` test file and get a readable chart: labels that never collide, time gaps collapsed and labelled, and output as PNG, SVG, PDF or Mermaid text.
 
 <!-- Image URLs use raw.githubusercontent.com so they render on PyPI; branch must match default (main). -->
 ![Example CSV timeline (wide format, with a time-gap break)](https://raw.githubusercontent.com/garrywilliams/timeline_viz/main/images/timeline1.png)
 
+![Swimlanes: orders aligned to the moment they were placed](https://raw.githubusercontent.com/garrywilliams/timeline_viz/main/images/swimlanes_orders.png)
+
 ## Features
 
-- Plot event timelines from CSV / DataFrame timestamp data
-- **Long-format logs** — one timestamp column across many rows, with optional filters on level / event type (incident-style timelines)
-- Handle time gaps with broken timeline display, each break labelled with the time skipped
-- Collision-free labels: boxes never overlap and connectors never cross another label, and the figure grows to fit
-- Date-aware time axis, plus PNG, SVG or PDF output
-- Auto-detect timestamp columns based on naming patterns
-- **Visualise Prometheus `promtool` unit-test files** — series values, eval checkpoints, and alert checks on a relative time axis
-- **Swimlanes**: one lane per log level, service or entity, on a shared clock or aligned to each lane's start
-- **Mermaid output** (`--format mmd`): sequence or gantt diagrams that render natively in GitHub / GitLab markdown
-- Customisable colour schemes
-- CLI and Python API
-- **Optional next step:** use saved PNGs (plus your CSV or milestone list) as input to **multimodal / image-generation LLMs** to produce executive-style infographics — see below
+- **Three inputs:** wide CSVs (one column per milestone), long-format event logs (one row per event, from CSV or raw text logs such as `kubectl logs`), and Prometheus `promtool` unit-test YAML.
+- **Swimlanes:** one lane per log level, service or entity, on a shared clock or with every lane aligned to its own start.
+- **Mermaid output** (`--format mmd`): sequence or gantt diagrams that render natively in GitHub, GitLab, Notion and Obsidian.
+- **Readable by construction:** label boxes never overlap and connectors never cross another label. The figure grows to fit.
+- **Time breaks:** long gaps are collapsed and labelled with the time skipped (`+3d 2h`).
+- **Date-aware axis**, colour-blind-safe lane palette, status colours for log levels, and customisable colour schemes.
+- PNG, SVG or PDF output; reads files or stdin; CLI and Python API.
 
 ## Installation
 
@@ -47,6 +46,17 @@ make precommit-install
 ```
 
 Run `make` or `make help` for tests, linting, builds, and other tasks. CI, release, and maintainer setup details live in [DEVELOPING.md](https://github.com/garrywilliams/timeline_viz/blob/main/DEVELOPING.md).
+
+## Upgrading from 0.x
+
+1.0 keeps every 0.x function signature, but a few defaults and behaviours changed:
+
+- `figsize` now defaults to `None`: 15in wide with the height fitted to the labels (was `(15, 5)`). Pass `(w, None)` to fix only the width. CLI `--figsize` takes `W` or `W,H`.
+- `date_rotation` now defaults to `0` (was `45`).
+- Timestamps with UTC offsets are converted to UTC instead of having the offset dropped, so events can move if your data mixes offsets.
+- `color_scheme` / `--colors` accept a partial scheme and reject unknown keys or invalid colours with an error.
+
+See the [CHANGELOG](https://github.com/garrywilliams/timeline_viz/blob/main/CHANGELOG.md) for everything else.
 
 ## Quick Start
 
@@ -247,7 +257,7 @@ timelineviz examples/promtest_label_minimal.yml --promtest
 timelineviz examples/promtest_label_minimal.yml --promtest --output-dir images --no-show
 ```
 
-Replace the path with your own promtool unit-test YAML when needed. Checked-in examples live under [`examples/`](examples/).
+Replace the path with your own promtool unit-test YAML when needed. Checked-in examples live under [`examples/`](https://github.com/garrywilliams/timeline_viz/tree/main/examples).
 
 ```python
 from timelineviz import parse_promtest_file, plot_promtest
@@ -288,19 +298,11 @@ Prometheus test files define metric series as values over discrete time steps (e
 
 Optional **`break_gap_minutes`** / CLI **`--promtest-break-gap`**: when gaps between anchors (`0`, series end, each eval/alert time) exceed that many minutes, the chart splits into **multiple horizontal panels** with slash markers—same idea as CSV **`threshold_days`** breaks. See [PROMTEST.md](https://github.com/garrywilliams/timeline_viz/blob/main/PROMTEST.md) and [`examples/promtest_time_breaks.yml`](https://github.com/garrywilliams/timeline_viz/blob/main/examples/promtest_time_breaks.yml).
 
-## From chart output to executive infographics
+## From chart output to executive summaries
 
-`timelineviz` is built for **faithful, technical** timelines (PNG from the CLI or `output_file=` in Python). For **stakeholder decks**, **board summaries**, or **comms**, you can treat that output as **source material** for a second step: a **multimodal or image-focused LLM** (any tool that accepts an image plus a long text brief—e.g. **Nano Banana** or similar) together with:
+`timelineviz` draws faithful, technical timelines. For a stakeholder deck or board summary you can use a saved chart as source material for a multimodal image model, together with the exact facts and a brief that says what *not* to invent. Always check the result against your data.
 
-- The **exported PNG** (or a screenshot of the figure)
-- Your **structured facts**: ordered milestones, dates, short business descriptions, KPIs, risks, and the story you want told
-- A **detailed creative prompt** (audience, tone, layout, colour rules, and what *not* to invent)
-
-The model can **redesign** the information as an infographic while you **verify** dates, labels, and numbers against your data. The sample below is an **illustrative** executive layout (sample healthcare journey) produced from that kind of workflow—not something `timelineviz` renders by itself.
-
-![Example executive infographic derived from timeline-style data and an LLM brief](https://raw.githubusercontent.com/garrywilliams/timeline_viz/main/images/executive_infographic_example.png)
-
-*Example only: narrative layout, icons, and insight rail were generated for communication design; always validate facts against your source CSV and plots.*
+[`docs/infographic-prompt.md`](https://github.com/garrywilliams/timeline_viz/blob/main/docs/infographic-prompt.md) is a worked example of such a brief, written for `images/swimlanes_orders.png`. Every number in it comes from `examples/order_fulfilment.csv`.
 
 ## API Reference
 
@@ -317,6 +319,17 @@ The model can **redesign** the information as an infographic while you **verify*
 | `label_mappings` | Custom display names for timestamp columns |
 | `color_scheme` | Colour overrides; any subset of `line`, `point_edge`, `point_face`, `connector`, `label_bg`, `label_edge`, `slashes`, `title` |
 | `output_file` / `output_format` | Save path (extension picks PNG/SVG/PDF) / format for `plot_multiple_timelines` and CLI `--format` |
+
+### Swimlanes and Mermaid
+
+| Parameter | Description |
+|-----------|-------------|
+| `lane_column` | `timeline_from_event_log`: column whose value names each event's lane (CLI `--lane-column`; raw logs default to `level`) |
+| `id_column` | `timeline_from_wide_entities`: one lane per value (or per row when omitted) |
+| `align` | `"absolute"`: shared clock. `"start"`: each lane starts at 0 and the axis shows elapsed time. CLI `--align auto` picks `start` for entities |
+| `lane_order` / `lane_colors` | Lane order top to bottom / per-lane colour overrides. Defaults: severity order for log levels, otherwise first seen |
+| `style` | `to_mermaid`: `"sequence"` (default) or `"gantt"` (CLI `--mermaid-style`) |
+| `threshold_days` | Swimlanes: gap that triggers a shared break. Mermaid sequence: gap that adds a "+gap later" note |
 
 ### Promtest Mode
 

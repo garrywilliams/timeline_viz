@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-23
+
+First stable release. Function signatures are unchanged from 0.x; see "Changed" and the README's "Upgrading from 0.x" for defaults that moved.
+
 ### Added
 
 - **Swimlanes:** `render_swimlanes()` and CLI `--swimlanes` draw one lane per `Event.lane`, with breaks shared by all lanes and lane names in a left gutter.
@@ -28,6 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `date_rotation` now defaults to `0` (the concise date labels no longer need rotating).
 - Panel widths are proportional to the label space each panel needs, and break marks are aligned with the timeline.
 - `varying_height` still staggers labels, but it is no longer needed to avoid overlaps.
+- Package status is now `Production/Stable`. The README is reorganised around the three inputs plus swimlanes and Mermaid, with an "Upgrading from 0.x" section.
+- The README's AI-generated healthcare infographic is replaced by [`docs/infographic-prompt.md`](docs/infographic-prompt.md), a reproducible brief built from the synthetic order data.
 
 ### Fixed
 

@@ -1,4 +1,4 @@
-"""timelineviz — Timeline visualisation for CSV data and Prometheus test files.
+"""timelineviz — Timelines, swimlanes and Mermaid diagrams from CSVs, logs and Prometheus test files.
 
 Create timeline charts from any timestamp data, or visualise promtool
 unit-test YAML files with annotated step charts.

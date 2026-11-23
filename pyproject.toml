@@ -5,14 +5,14 @@ build-backend = "hatchling.build"
 [project]
 name = "timelineviz"
 dynamic = ["version"]
-description = "Timeline visualisation for CSV data and Prometheus test files"
+description = "Timelines, swimlanes and Mermaid diagrams from CSVs, logs and Prometheus test files"
 readme = "README.md"
 authors = [
     {name = "Garry Williams"},
 ]
 license = "MIT"
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
@@ -22,7 +22,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Visualization",
     "Typing :: Typed",
 ]
-keywords = ["timeline", "visualisation", "prometheus", "promtool", "matplotlib"]
+keywords = ["timeline", "swimlane", "mermaid", "logs", "visualisation", "prometheus", "promtool", "matplotlib"]
 requires-python = ">=3.11"
 dependencies = [
     "matplotlib>=3.4",
