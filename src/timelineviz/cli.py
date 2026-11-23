@@ -104,7 +104,21 @@ Example usage:
         help="Number of days gap to consider as a break in timeline",
     )
 
-    parser.add_argument("--figsize", default="15,5", help="Figure size in inches (width,height)")
+    parser.add_argument(
+        "--figsize",
+        default=None,
+        metavar="W[,H]",
+        help="Figure size in inches. Default: 15in wide, height sized to fit the labels. "
+        "Give 'W' to fix only the width or 'W,H' to fix both",
+    )
+
+    parser.add_argument(
+        "--format",
+        dest="output_format",
+        choices=("png", "svg", "pdf"),
+        default="png",
+        help="File format for images written to --output-dir (default: png)",
+    )
 
     parser.add_argument("--point-size", type=int, default=10, help="Size of the event points")
 
@@ -187,11 +201,10 @@ Example usage:
     # Parse the arguments
     args = parser.parse_args(args)
 
-    # Validate figure size format
     try:
-        width, height = map(float, args.figsize.split(","))
+        _parse_figsize_arg(args.figsize)
     except ValueError:
-        parser.error("Figure size must be in format 'width,height'")
+        parser.error("Figure size must be 'width' or 'width,height' in inches")
 
     # Convert JSON strings to dicts
     if args.colors:
@@ -249,14 +262,9 @@ def main(args=None):
     if args.promtest:
         return _run_promtest(args)
 
-    # Parse figure size
-    try:
-        figsize = tuple(map(float, args.figsize.split(",")))
-        if len(figsize) != 2:
-            raise ValueError("Figure size must be width,height")
-    except ValueError as e:
-        print(f"Error parsing figure size: {e}", file=sys.stderr)
-        return 1
+    figsize, err = _figsize_from_args(args)
+    if err:
+        return err
 
     input_data = None
 
@@ -312,6 +320,7 @@ def main(args=None):
             remove_suffixes=args.remove_suffixes,
             entity_name=args.entity_name,
             varying_height=args.varying_height,
+            output_format=getattr(args, "output_format", "png"),
         )
 
         if not processed:
@@ -330,6 +339,27 @@ def main(args=None):
 
         traceback.print_exc()
         return 1
+
+
+def _parse_figsize_arg(value):
+    """``None`` → None; ``"W"`` → ``(W, None)``; ``"W,H"`` → ``(W, H)``. Raises ValueError."""
+    if value is None:
+        return None
+    parts = [float(p) for p in value.split(",")]
+    if len(parts) == 1:
+        return parts[0], None
+    if len(parts) == 2:
+        return parts[0], parts[1]
+    raise ValueError("Figure size must be 'width' or 'width,height'")
+
+
+def _figsize_from_args(args):
+    """Resolve ``--figsize``. Returns ``(figsize, exit_code)``."""
+    try:
+        return _parse_figsize_arg(args.figsize), 0
+    except ValueError as e:
+        print(f"Error parsing figure size: {e}", file=sys.stderr)
+        return None, 1
 
 
 def _color_scheme_from_args(args):
@@ -477,13 +507,9 @@ def _load_promtest_groups(input_arg):
 
 def _run_event_log(args):
     """Handle --event-log mode."""
-    try:
-        figsize = tuple(map(float, args.figsize.split(",")))
-        if len(figsize) != 2:
-            raise ValueError("Figure size must be width,height")
-    except ValueError as e:
-        print(f"Error parsing figure size: {e}", file=sys.stderr)
-        return 1
+    figsize, err = _figsize_from_args(args)
+    if err:
+        return err
 
     color_scheme, err = _color_scheme_from_args(args)
     if err:
@@ -492,7 +518,8 @@ def _run_event_log(args):
     output_file = None
     if args.output_dir:
         os.makedirs(args.output_dir, exist_ok=True)
-        output_file = os.path.join(args.output_dir, "event_log_timeline.png")
+        ext = getattr(args, "output_format", "png")
+        output_file = os.path.join(args.output_dir, f"event_log_timeline.{ext}")
 
     try:
         input_data = _load_event_log_input(args.csv_file, raw_log_format=args.raw_log_format)
@@ -537,9 +564,11 @@ def _run_event_log(args):
 def _run_promtest(args):
     """Handle --promtest mode."""
     try:
-        figsize = tuple(map(float, args.figsize.split(",")))
+        figsize = _parse_figsize_arg(args.figsize)
     except ValueError:
         figsize = None
+    if figsize is not None and figsize[1] is None:
+        figsize = None  # promtest sizes itself unless both dimensions are given
 
     try:
         groups = _load_promtest_groups(args.csv_file)
@@ -562,7 +591,11 @@ def _run_promtest(args):
             groups,
             figsize=figsize,
             show_plot=not args.no_show,
-            output_file=os.path.join(args.output_dir, "promtest.png") if args.output_dir else None,
+            output_file=(
+                os.path.join(args.output_dir, f"promtest.{getattr(args, 'output_format', 'png')}")
+                if args.output_dir
+                else None
+            ),
             dpi=args.dpi,
             break_gap_minutes=args.promtest_break_gap_minutes,
             label_layout=args.promtest_label_layout,

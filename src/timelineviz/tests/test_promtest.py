@@ -822,3 +822,12 @@ tests:
     plot_promtest(parse_promtest_string(yaml_two_groups), show_plot=False, output_file=str(out))
     assert sorted(p.name for p in tmp_path.iterdir()) == ["promtest_0.svg", "promtest_1.svg"]
     plt.close("all")
+
+
+def test_plot_promtest_explicit_figsize():
+    import matplotlib.pyplot as plt
+
+    yml = "tests:\n  - input_series:\n      - series: 'up'\n        values: '1x3'\n"
+    ((fig, _axes),) = plot_promtest(parse_promtest_string(yml), figsize=(10, 4), show_plot=False)
+    assert tuple(fig.get_size_inches()) == (10, 4)
+    plt.close(fig)
