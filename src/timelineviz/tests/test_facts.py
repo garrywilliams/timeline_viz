@@ -1,4 +1,6 @@
 import json
+import re
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -7,7 +9,8 @@ from timelineviz import Event, Timeline, fill_brief, timeline_facts, to_facts
 from timelineviz.facts import _dur
 from timelineviz.model import timeline_from_wide_entities
 
-ORDERS = "examples/order_fulfilment.csv"
+ROOT = Path(__file__).resolve().parents[3]
+ORDERS = str(ROOT / "examples/order_fulfilment.csv")
 
 
 def T(s):
@@ -160,3 +163,49 @@ def test_fill_brief():
         fill_brief("nothing here", "F")
     with pytest.raises(ValueError, match="unknown placeholder"):
         fill_brief("{{facts}} {{fcats}}", "F")
+
+
+# --- docs stay in step with the facts they quote ---------------------------------
+
+_DURATION_RE = re.compile(r"\b\d+d(?: \d+h)?\b|\b\d+h(?: \d+m)?\b|\b\d+m(?: \d+s)?\b|\b\d+s\b")
+_CLOCK_RE = re.compile(r"\b\d{2}:\d{2}\b")
+_DAY_RE = re.compile(r"\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun) \d{1,2} [A-Z][a-z]{2}\b")
+
+
+def _duration_texts(node):
+    """Every ``text`` duration anywhere in a facts dict."""
+    if isinstance(node, dict):
+        if set(node) >= {"seconds", "text"}:
+            yield node["text"]
+        for value in node.values():
+            yield from _duration_texts(value)
+    elif isinstance(node, list):
+        for value in node:
+            yield from _duration_texts(value)
+
+
+def _brief_block(path):
+    text = (ROOT / path).read_text()
+    return text.split("```text\n", 1)[1].split("```", 1)[0]
+
+
+def test_committed_facts_example_is_current(orders):
+    committed = (ROOT / "examples/order_fulfilment.facts.md").read_text()
+    regenerated = to_facts(timeline_from_wide_entities(ORDERS, id_column="order_id"))
+    assert committed.split("\n", 1)[1] == regenerated.split("\n", 1)[1]  # title line may differ
+
+
+def test_worked_brief_quotes_only_real_facts(orders):
+    """Every duration, clock time and day in the hand-written brief is in the facts."""
+    brief = _brief_block("docs/infographic-prompt.md")
+    facts = timeline_facts(orders)
+    md = to_facts(orders)
+    durations = set(_duration_texts(facts))
+
+    quoted = _DURATION_RE.findall(brief)
+    assert len(quoted) >= 10  # the regex really is finding the numbers
+    assert sorted(set(quoted) - durations) == []
+    assert sorted(set(_CLOCK_RE.findall(brief)) - set(_CLOCK_RE.findall(md))) == []
+    # Calendar days with no event in them (A-1004 is in transit) need not be in the facts
+    days = set(_DAY_RE.findall(brief)) - {"Sun 9 Mar", "Wed 12 Mar"}
+    assert days and sorted(d for d in days if d not in md) == []
