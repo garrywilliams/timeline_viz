@@ -118,7 +118,7 @@ plot_promtest(groups)
 plot_promtest(groups, break_gap_minutes=60)
 
 # Optional: reduce overlapping labels
-plot_promtest(groups, label_layout='compact')
+plot_promtest(groups, label_layout="compact")
 ```
 
 ### Jupyter Notebook
@@ -291,13 +291,13 @@ Run `python examples/gen_charts.py` to write `images/promtest_example_2.png`, or
 
 ```python
 plot_promtest(
-    groups,                # list[PromTestGroup]
-    figsize=None,          # (width, height) or auto-sized
-    show_plot=True,        # display interactively
-    output_file=None,      # save PNG path
-    dpi=150,               # resolution
-    title=None,            # custom figure title
-    color_scheme=None,     # override PROMTEST_COLOR_SCHEME keys
+    groups,  # list[PromTestGroup]
+    figsize=None,  # (width, height) or auto-sized
+    show_plot=True,  # display interactively
+    output_file=None,  # save PNG path
+    dpi=150,  # resolution
+    title=None,  # custom figure title
+    color_scheme=None,  # override PROMTEST_COLOR_SCHEME keys
 )
 # Returns list[(matplotlib.Figure, list[matplotlib.Axes])]
 ```
@@ -308,16 +308,24 @@ Override any of these keys via the `color_scheme` parameter:
 
 ```python
 {
-    'series_colors': ['#0046be', '#e6194b', '#3cb44b', '#f58231',
-                      '#911eb4', '#42d4f4', '#f032e6', '#bfef45'],
-    'eval_line':      '#e6194b',   # eval_time vertical lines
-    'alert_pending':  '#ffc107',   # pending alert markers
-    'alert_firing':   '#dc3545',   # firing alert markers
-    'grid':           '#e0e0e0',
-    'background':     '#fafafa',
-    'text':           '#333333',
-    'stale_marker':   '#999999',   # × marks for stale samples
-    'missing_marker': '#cccccc',   # □ marks for missing samples
+    "series_colors": [
+        "#0046be",
+        "#e6194b",
+        "#3cb44b",
+        "#f58231",
+        "#911eb4",
+        "#42d4f4",
+        "#f032e6",
+        "#bfef45",
+    ],
+    "eval_line": "#e6194b",  # eval_time vertical lines
+    "alert_pending": "#ffc107",  # pending alert markers
+    "alert_firing": "#dc3545",  # firing alert markers
+    "grid": "#e0e0e0",
+    "background": "#fafafa",
+    "text": "#333333",
+    "stale_marker": "#999999",  # × marks for stale samples
+    "missing_marker": "#cccccc",  # □ marks for missing samples
 }
 ```
 

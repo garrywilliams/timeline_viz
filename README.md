@@ -66,18 +66,21 @@ timelineviz data.csv --timestamp-columns created_at updated_at completed_at --va
 from timelineviz import plot_timeline, plot_multiple_timelines
 
 import pandas as pd
+
 df = pd.read_csv("data.csv")
 
 # Single entity
-plot_timeline(df.iloc[0],
-              timestamp_columns=['created_at', 'updated_at', 'completed_at'],
-              entity_id="12345")
+plot_timeline(
+    df.iloc[0], timestamp_columns=["created_at", "updated_at", "completed_at"], entity_id="12345"
+)
 
 # Multiple entities
-plot_multiple_timelines("data.csv",
-                        timestamp_columns=['created_at', 'updated_at'],
-                        id_column='entity_id',
-                        output_dir="timeline_images")
+plot_multiple_timelines(
+    "data.csv",
+    timestamp_columns=["created_at", "updated_at"],
+    id_column="entity_id",
+    output_dir="timeline_images",
+)
 ```
 
 ### Event log (long format)
