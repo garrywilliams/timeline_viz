@@ -1,51 +1,79 @@
 # Example brief: executive infographic from a timelineviz chart
 
-A worked example of turning a `timelineviz` chart into a stakeholder infographic with a multimodal image model. Attach the chart image and paste the brief below. Check every number in the result against the source data before using it.
+`timelineviz` draws the precise, to-scale chart. An image model can't place points on a scale reliably, so this brief doesn't ask it to redraw the chart. Instead it tells the same story with a weekly calendar, where every fact is a day or a printed number, not a position on an axis.
+
+Every number below comes from the facts block for the order data, [`examples/order_fulfilment.facts.md`](../examples/order_fulfilment.facts.md):
+
+```bash
+timelineviz examples/order_fulfilment.csv --id-column order_id --entity-name Order \
+  --swimlanes --format facts
+```
+
+This brief was then written by hand around a calendar concept. To skip that step, fill the generic [`brief-template.md`](brief-template.md) instead, which leaves the concept to the model:
+
+```bash
+timelineviz examples/order_fulfilment.csv --id-column order_id --entity-name Order \
+  --swimlanes --format facts --brief-template docs/brief-template.md > brief.md
+```
+
+Attach `images/swimlanes_orders.png` as context, paste the brief, and check every number in the result against the facts before using it.
 
 ## Brief
 
 ```text
-Attach: images/swimlanes_orders.png
+Attached for context only: a technical timeline of five online orders. Do NOT redraw
+it, and do not draw any continuous time axis, scale, gridlines or bars whose length
+stands for time.
 
-Create a single executive infographic, landscape 16:9, titled
-"Order fulfilment: where the time goes". It is a stakeholder summary of the attached
-timeline chart, which shows five online orders, one lane each, aligned so every order
-starts at 0 at the moment it was placed.
+Create one landscape 16:9 editorial infographic titled
+"Order fulfilment: where the time goes".
 
-Use ONLY these facts. Do not invent numbers, causes, customer names, logos or brands.
+Concept: a week-planner calendar. Time is shown only by which DAY a thing happened
+and by printed durations, never by distance.
 
-Orders (time measured from the moment each order was placed):
-- A-1001, placed Mon 3 Mar 09:12: paid immediately, picked +4h 28m, shipped +7h 52m, delivered +2d 2h
-- A-1002, placed Tue 4 Mar 21:47: paid +1m, picked +10h 28m, shipped +18h 42m, delivered +1d 16h
-- A-1003, placed Thu 6 Mar 11:03: paid immediately, picked +54m, shipped +6h 1m, delivered +22h 43m (fastest)
-- A-1004, placed Fri 7 Mar 16:20: paid +17h 42m, picked +2d 17h, shipped +3d 0h 44m, delivered +5d 23h (slowest)
-- A-1005, placed Mon 10 Mar 08:05: paid immediately, picked +1h 6m, shipped +4h 34m, delivered +1d 2h
+Use ONLY these facts. Do not invent numbers, causes, people, logos or brands.
+Do not explain WHY anything was slow.
 
-Headline numbers:
-- Median placed-to-delivered: 1d 16h
-- Median excluding A-1004: 1d 9h
-- Slowest order: A-1004 at 5d 23h, about 3.5x the median
+HERO, top two-thirds: "A-1004's week"
+A horizontal row of seven paper calendar day cards, Fri 7 Mar to Thu 13 Mar
+(Fri, Sat, Sun, Mon, Tue, Wed, Thu). Milestones are stickers placed in their day card,
+each with an icon and time:
+- Fri 7 Mar: cart icon, "Placed 16:20"
+- Sat 8 Mar: card icon, "Paid 10:02"
+- Sun 9 Mar: empty
+- Mon 10 Mar: box icon, "Picked 09:30" and truck icon, "Shipped 17:05"
+- Tue 11 Mar: empty, a small van-on-the-road doodle
+- Wed 12 Mar: empty, a small van-on-the-road doodle
+- Thu 13 Mar: house icon, "Delivered 15:35"
+Between cards, small handwritten-style tags show the waits:
+- Placed to paid: "17h 43m"
+- Paid to picked: "1d 23h"
+- Picked to shipped: "7h 35m"
+- Shipped to delivered: "2d 23h"
+Use the warm accent (#eb6834) for A-1004's stickers and tags.
 
-Layout:
-1. Left two-thirds: a clean, simplified redraw of the swimlane chart. Five horizontal
-   lanes labelled A-1001 to A-1005, a shared elapsed-time axis from 0 to +6d, and a
-   small marker for each milestone (Placed, Paid, Picked, Shipped, Delivered). Emphasise
-   A-1004 and keep the other four lanes muted. Use a short text annotation beside
-   A-1004's gaps, e.g. "Payment +17h 42m" and "Picked +2d 17h". Do not speculate on why.
-2. Right third: three stat tiles stacked vertically, showing "1d 16h median delivery",
-   "22h 43m fastest (A-1003)" and "5d 23h slowest (A-1004)".
-3. Bottom strip: one neutral sentence: "Four of five orders were delivered within about
-   two days; A-1004 waited longest for payment and picking."
+COMPARISON, bottom-left: "The other four orders"
+Four small ticket stubs, blue accent (#2a78d6), each with the order number, the day
+placed, the day delivered and the total, as text:
+- A-1001: Mon 3 Mar → Wed 5 Mar, 2d 2h
+- A-1002: Tue 4 Mar → Thu 6 Mar, 1d 16h
+- A-1003: Thu 6 Mar → Fri 7 Mar, 22h 43m (fastest)
+- A-1005: Mon 10 Mar → Tue 11 Mar, 1d 2h
+Plus one line under them: "All four were paid within 2 minutes."
 
-Style:
-- Flat, modern, lots of whitespace, off-white background (#fcfcfb), near-black text
-  (#0b0b0b), one accent blue (#2a78d6) for the normal lanes and one warm accent
-  (#eb6834) only for A-1004. No gradients, 3D, drop shadows, stock photos or clip-art
-  people. Simple line icons are fine (cart, card, box, truck, house) for the five
-  milestone types.
-- Sans-serif type, clear hierarchy, every number legible at thumbnail size.
-- All text must be spelled exactly as given above. If a label can't be rendered
-  legibly, leave it out rather than approximate it.
+STATS, bottom-right: three numbers with small labels:
+"5d 23h" A-1004 total; "1d 16h" median of all five; "22h 43m" fastest (A-1003)
+
+Bottom sentence, neutral:
+"A-1004 took longest at payment, picking and delivery: 5d 23h against a 1d 16h median."
+
+Style: warm editorial / paper-craft, off-white background (#fcfcfb), near-black text
+(#0b0b0b), only the two accents above, subtle paper texture on the cards. Simple line
+icons, no clip-art people, no 3D, no gradients, no stock photos. Sans-serif type with
+clear hierarchy, every number legible at thumbnail size.
+
+All text must be spelled exactly as given. If something can't be rendered legibly,
+leave it out rather than approximate it.
 
 Footer, small: "Illustrative. Synthetic data from timelineviz examples/order_fulfilment.csv".
 ```

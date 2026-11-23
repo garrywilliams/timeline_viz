@@ -1659,3 +1659,81 @@ def test_entity_swimlanes_bad_colors_and_figsize(orders_csv, capsys):
     base = dict(csv_file=str(orders_csv), colors=None, figsize=None)
     assert cli._run_entity_swimlanes(SimpleNamespace(**{**base, "figsize": "1,2,3"})) == 1
     assert cli._run_entity_swimlanes(SimpleNamespace(**{**base, "colors": {"x": "1"}})) == 1
+
+
+def test_main_entity_swimlanes_facts_stdout(capsys):
+    rc = main(
+        [
+            "examples/order_fulfilment.csv",
+            "--id-column",
+            "order_id",
+            "--swimlanes",
+            "--format",
+            "facts",
+        ]
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert out.startswith("# Facts: Entity swimlanes\n")
+    assert "- Slowest: A-1004, 5d 23h" in out
+
+
+def test_main_event_log_facts_json_file(tmp_path, raw_log):
+    out = tmp_path / "out"
+    rc = main(
+        [
+            str(raw_log),
+            "--event-log",
+            "--raw-log-format",
+            "--swimlanes",
+            "--format",
+            "facts-json",
+            "-o",
+            str(out),
+        ]
+    )
+    assert rc == 0
+    data = json.loads((out / "event_log_swimlanes.facts.json").read_text())
+    assert data["title"] == "Event log by level" and "largest_gaps" in data
+
+
+def test_main_facts_brief_template(tmp_path, capsys):
+    tpl = tmp_path / "t.md"
+    tpl.write_text("Title: {{title}}\n\n{{facts}}\n")
+    out = tmp_path / "out"
+    argv = [
+        "examples/order_fulfilment.csv",
+        "--id-column",
+        "order_id",
+        "--entity-name",
+        "Order",
+        "--swimlanes",
+        "--format",
+        "facts",
+        "--brief-template",
+        str(tpl),
+    ]
+    assert main(argv + ["-o", str(out)]) == 0
+    text = (out / "order_swimlanes.brief.md").read_text()
+    assert text.startswith("Title: Order swimlanes\n\n# Facts: Order swimlanes\n")
+    assert "Saved brief to" in capsys.readouterr().out
+
+    assert main(argv[:-1] + [str(tmp_path / "missing.md")]) == 1
+    assert "cannot read brief template" in capsys.readouterr().err
+    tpl.write_text("no placeholder")
+    assert main(argv) == 1
+    assert "no {{facts}} placeholder" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["x.csv", "--format", "facts"],  # wide mode without --swimlanes
+        ["x.yml", "--promtest", "--format", "facts-json"],
+        ["x.csv", "--swimlanes", "--brief-template", "t.md"],  # needs --format facts
+        ["x.csv", "--swimlanes", "--format", "facts-json", "--brief-template", "t.md"],
+    ],
+)
+def test_parse_args_facts_errors(argv):
+    with pytest.raises(SystemExit):
+        parse_args(argv)

@@ -18,6 +18,8 @@ First stable release. Function signatures are unchanged from 0.x; see "Changed" 
   - Entities: `timeline_from_wide_entities()`; in the CLI, `--swimlanes` on wide CSV gives one lane per `--id-column` value (or per row).
   - `align="start"` / `--align start` aligns each lane to its first event and shows elapsed time (`+1h 30m`). It is the default for entities, and has no breaks unless `--threshold-days` is given.
 - **Mermaid output:** `to_mermaid()` and `--format mmd` (stdout without `-o`, `.mmd` file with it), as a `sequenceDiagram` (default) or `gantt` (`--mermaid-style gantt`).
+- **Facts:** `to_facts()` / `timeline_facts()` and `--format facts` / `facts-json` state every event, duration and lane comparison (median, fastest, slowest, per-stage table) as exact Markdown or JSON. Log-level lanes get the largest gaps instead.
+- **Briefs:** `fill_brief()` and `--brief-template FILE` fill `{{facts}}` / `{{title}}` in a template, e.g. a brief for an image model. `docs/brief-template.md` is a starting template and `docs/infographic-prompt.md` a worked example. Unknown placeholders are an error.
 - `examples/order_fulfilment.csv` (synthetic) and `examples/swimlanes_levels.mmd`; `make example-charts` also renders `swimlanes_levels.png` and `swimlanes_orders.png`.
 - `Event` / `Timeline` data model (`timelineviz.model`) with `timeline_from_wide` and `timeline_from_event_log` builders, and `render_timeline` to draw any `Timeline`. All are exported from `timelineviz`.
 - Collision-free label layout (`timelineviz.layout`): label boxes never overlap, connectors never cross another label, and boxes stay inside their panel. The figure height grows to fit.
