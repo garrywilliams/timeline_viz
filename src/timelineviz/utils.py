@@ -88,7 +88,10 @@ def parse_timestamps(df, column, normalize_tz=False, errors="raise"):
     column : str
         Name of column containing timestamps
     normalize_tz : bool, default=False
-        If True, converts timezone-aware timestamps to timezone-naive
+        If True, convert every timestamp to UTC and return timezone-naive values.
+        Values carrying an offset (``+01:00``, ``Z``) are converted to UTC first, so
+        rows with different offsets stay in true chronological order. Naive values
+        are assumed to already be UTC and are left unchanged.
     errors : str, default='raise'
         How to handle parsing errors:
         - 'raise': raise exception
@@ -105,16 +108,14 @@ def parse_timestamps(df, column, normalize_tz=False, errors="raise"):
     if errors == "ignore":
         return timestamp_series
 
-    # Try to parse timestamps
-    ts_series = pd.to_datetime(timestamp_series, errors=errors)
+    if normalize_tz:
+        # utc=True converts offset-aware values to UTC (and copes with mixed
+        # offsets in one column); naive values are treated as UTC. Dropping the
+        # tz afterwards keeps the UTC wall-clock rather than the local one.
+        ts_series = pd.to_datetime(timestamp_series, errors=errors, utc=True)
+        return ts_series.dt.tz_localize(None)
 
-    # Handle timezone normalization
-    if normalize_tz and not ts_series.isna().all():
-        # Only check timezone if we have valid timestamps
-        if ts_series.dt.tz is not None:
-            ts_series = ts_series.dt.tz_localize(None)
-
-    return ts_series
+    return pd.to_datetime(timestamp_series, errors=errors)
 
 
 def create_color_scheme(base_color=None, accent_color=None):
@@ -168,6 +169,36 @@ def create_color_scheme(base_color=None, accent_color=None):
         "slashes": base_color,  # Timeline breaks
         "title": base_color,  # Title
     }
+
+
+def resolve_color_scheme(overrides=None):
+    """Merge a (possibly partial) colour override dict onto the default scheme.
+
+    ``line`` and ``point_face`` act as base / accent colours: every other key
+    derived from them follows them unless that key is overridden too. Any other
+    key can be overridden on its own. Values may be hex strings or matplotlib
+    colour names; they are normalised to ``#rrggbb``.
+
+    Raises
+    ------
+    ValueError
+        If a key is not a known colour slot or a value is not a valid colour.
+    """
+    from matplotlib.colors import to_hex
+
+    overrides = dict(overrides or {})
+    scheme = create_color_scheme(
+        base_color=overrides.get("line"), accent_color=overrides.get("point_face")
+    )
+    unknown = sorted(set(overrides) - set(scheme))
+    if unknown:
+        raise ValueError(f"Unknown color keys: {unknown}. Valid keys: {sorted(scheme)}")
+    for key, value in overrides.items():
+        try:
+            scheme[key] = to_hex(value)
+        except (ValueError, TypeError):
+            raise ValueError(f"Invalid color for {key!r}: {value!r}") from None
+    return scheme
 
 
 def detect_timestamp_columns(columns):
@@ -233,3 +264,33 @@ def clean_column_name(column_name, remove_suffixes=None):
 
     # Title case the result
     return clean_name.title()
+
+
+# Matplotlib's built-in non-interactive (file-only) backends.
+_NON_INTERACTIVE_BACKENDS = frozenset({"agg", "cairo", "pdf", "pgf", "ps", "svg", "template"})
+
+
+def is_gui_backend(backend):
+    """Return True if ``backend`` opens a window, so ``plt.show()`` is needed.
+
+    Covers every GUI backend name (``qtagg``, ``qt5agg``, ``tkagg``, ``macosx``,
+    ``gtk4agg``, ``wxagg``, …) without a hard-coded allowlist that goes stale.
+    Notebook / third-party ``module://`` backends (e.g. Jupyter inline) display
+    figures themselves, so they are not treated as GUI backends.
+    """
+    name = backend.lower()
+    return not name.startswith("module://") and name not in _NON_INTERACTIVE_BACKENDS
+
+
+def show_or_close(fig, show_plot):
+    """Show ``fig`` on a GUI backend when requested, otherwise close it.
+
+    With ``show_plot=True`` on a non-GUI backend (scripts using Agg, Jupyter
+    inline) the figure is left open, which is what lets notebooks render it.
+    """
+    import matplotlib.pyplot as plt
+
+    if not show_plot:
+        plt.close(fig)
+    elif is_gui_backend(plt.get_backend()):
+        plt.show()

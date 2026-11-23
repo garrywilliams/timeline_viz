@@ -364,17 +364,22 @@ def test_parse_timestamps_timezone_handling():
     result = parse_timestamps(df, "ts", normalize_tz=True)
     assert result.dt.tz is None  # Should be timezone-naive
 
-    # Test with mixed timezone data
-    df = pd.DataFrame(
-        {
-            "ts": [
-                "2024-01-01T10:00:00+00:00",  # With timezone
-                "2024-01-02T15:30:00+00:00",  # With timezone
-            ]
-        }
-    )
+    # Non-UTC offsets are converted to UTC, not just stripped
+    df = pd.DataFrame({"ts": ["2024-06-01T10:00:00+02:00"]})
     result = parse_timestamps(df, "ts", normalize_tz=True)
-    assert result.dt.tz is None  # Should all be timezone-naive
+    assert result.dt.tz is None
+    assert result.iloc[0] == pd.Timestamp("2024-06-01 08:00:00")
+
+    # Mixed offsets in one column keep true chronological order:
+    # 10:00+02:00 (08:00Z) happens before 09:00+00:00 (09:00Z)
+    df = pd.DataFrame({"ts": ["2024-06-01T09:00:00+00:00", "2024-06-01T10:00:00+02:00"]})
+    result = parse_timestamps(df, "ts", normalize_tz=True)
+    assert result.dt.tz is None
+    assert list(result) == [
+        pd.Timestamp("2024-06-01 09:00:00"),
+        pd.Timestamp("2024-06-01 08:00:00"),
+    ]
+    assert result.iloc[1] < result.iloc[0]
 
     # Test with all naive timestamps
     df = pd.DataFrame(
@@ -414,3 +419,86 @@ def test_create_color_scheme_invalid_accent_hex():
 def test_create_color_scheme_invalid_empty_accent():
     with pytest.raises(ValueError, match="Invalid color name"):
         create_color_scheme(accent_color="")
+
+
+def test_resolve_color_scheme_defaults():
+    from timelineviz.utils import resolve_color_scheme
+
+    assert resolve_color_scheme() == create_color_scheme()
+    assert resolve_color_scheme({}) == create_color_scheme()
+
+
+def test_resolve_color_scheme_partial_overrides():
+    from timelineviz.utils import resolve_color_scheme
+
+    # Base colour flows to derived keys; explicit keys win over derived ones
+    scheme = resolve_color_scheme({"line": "red", "title": "#123456", "label_bg": "white"})
+    assert scheme["line"] == "#ff0000"
+    assert scheme["connector"] == "#ff0000"
+    assert scheme["slashes"] == "#ff0000"
+    assert scheme["title"] == "#123456"
+    assert scheme["label_bg"] == "#ffffff"
+    assert scheme["point_face"] == "#ffe000"  # default accent
+
+
+def test_resolve_color_scheme_every_key_is_honoured():
+    from timelineviz.utils import resolve_color_scheme
+
+    keys = create_color_scheme().keys()
+    overrides = {k: f"#{i + 1:02x}{i + 1:02x}{i + 1:02x}" for i, k in enumerate(keys)}
+    assert resolve_color_scheme(overrides) == overrides
+
+
+def test_resolve_color_scheme_rejects_bad_input():
+    from timelineviz.utils import resolve_color_scheme
+
+    with pytest.raises(ValueError, match="Unknown color keys"):
+        resolve_color_scheme({"lien": "#ff0000"})
+    with pytest.raises(ValueError, match="Invalid color for 'title'"):
+        resolve_color_scheme({"title": "not-a-color"})
+    with pytest.raises(ValueError, match="Invalid color for 'label_bg'"):
+        resolve_color_scheme({"label_bg": 42})
+
+
+@pytest.mark.parametrize(
+    "backend",
+    ["qtagg", "QtAgg", "qt5agg", "tkagg", "TkAgg", "macosx", "gtk4agg", "wxagg"],
+)
+def test_is_gui_backend_true(backend):
+    from timelineviz.utils import is_gui_backend
+
+    assert is_gui_backend(backend)
+
+
+@pytest.mark.parametrize(
+    "backend",
+    ["agg", "Agg", "pdf", "svg", "module://matplotlib_inline.backend_inline"],
+)
+def test_is_gui_backend_false(backend):
+    from timelineviz.utils import is_gui_backend
+
+    assert not is_gui_backend(backend)
+
+
+@pytest.mark.parametrize(
+    "backend,show_plot,expect_show,expect_open",
+    [
+        ("qtagg", True, True, True),  # modern Qt name was previously missed
+        ("agg", True, False, True),  # headless: leave figure open for the caller
+        ("module://matplotlib_inline.backend_inline", True, False, True),
+        ("qtagg", False, False, False),  # show_plot=False always closes
+    ],
+)
+def test_show_or_close(monkeypatch, backend, show_plot, expect_show, expect_open):
+    import matplotlib.pyplot as plt
+
+    from timelineviz.utils import show_or_close
+
+    shown = []
+    monkeypatch.setattr(plt, "get_backend", lambda: backend)
+    monkeypatch.setattr(plt, "show", lambda *a, **k: shown.append(True))
+    fig = plt.figure()
+    show_or_close(fig, show_plot)
+    assert bool(shown) is expect_show
+    assert plt.fignum_exists(fig.number) is expect_open
+    plt.close(fig)

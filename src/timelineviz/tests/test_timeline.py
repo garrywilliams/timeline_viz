@@ -888,3 +888,74 @@ def test_plot_event_log_timeline_from_csv(tmp_path):
     )
     assert isinstance(fig, plt.Figure)
     plt.close(fig)
+
+
+def _annotation_labels(axs):
+    """First line of every event label, in drawn (chronological) order."""
+    return [t.get_text().split("\n")[0] for ax in axs for t in ax.texts]
+
+
+def test_plot_timeline_orders_columns_with_different_offsets_by_utc():
+    # 10:00+02:00 is 08:00Z, so "Shipped" happens before "Created" (09:00Z).
+    row = pd.Series(
+        {
+            "created_at": "2024-06-01T09:00:00+00:00",
+            "shipped_at": "2024-06-01T10:00:00+02:00",
+        }
+    )
+    fig, axs = plot_timeline(row, ["created_at", "shipped_at"], show_plot=False)
+    assert _annotation_labels(axs) == ["Shipped", "Created"]
+    assert "2024-06-01 08:00:00.000" in axs[0].texts[0].get_text()
+    plt.close(fig)
+
+
+def test_plot_timeline_applies_partial_color_scheme():
+    from matplotlib.colors import to_hex
+
+    row = pd.Series({"a_at": "2024-01-01 10:00", "b_at": "2024-01-01 11:00"})
+    fig, axs = plot_timeline(
+        row,
+        ["a_at", "b_at"],
+        color_scheme={"title": "#aa0000", "label_bg": "#00bb00", "point_face": "#0000cc"},
+        show_plot=False,
+    )
+    assert to_hex(fig._suptitle.get_color()) == "#aa0000"
+    assert to_hex(axs[0].texts[0].get_bbox_patch().get_facecolor()) == "#00bb00"
+    points = [ln for ln in axs[0].lines if ln.get_marker() == "o"]
+    assert to_hex(points[0].get_markerfacecolor()) == "#0000cc"
+    plt.close(fig)
+
+
+def test_plot_multiple_timelines_uses_every_row_of_an_entity(monkeypatch):
+    # Patient 1 has two visits on separate rows; the second row's events
+    # (and the NaN in row one) must not be dropped.
+    df = pd.DataFrame(
+        {
+            "patient_id": [1, 1, 2],
+            "admitted_at": ["2024-01-01 08:00", "2024-01-10 09:00", "2024-02-01 10:00"],
+            "discharged_at": [None, "2024-01-12 17:00", "2024-02-03 11:00"],
+        }
+    )
+    captured = {}
+    real_plot = _plot_sorted_events
+
+    def spy(timestamps, labels, **kwargs):
+        captured[kwargs["entity_id"]] = (list(timestamps), list(labels))
+        return real_plot(timestamps, labels, **kwargs)
+
+    monkeypatch.setattr("timelineviz.timeline._plot_sorted_events", spy)
+    plot_multiple_timelines(
+        df,
+        timestamp_columns=["admitted_at", "discharged_at"],
+        id_column="patient_id",
+        show_plots=False,
+    )
+    ts1, labels1 = captured["1"]
+    assert labels1 == ["Admitted", "Admitted", "Discharged"]
+    assert ts1 == [
+        pd.Timestamp("2024-01-01 08:00"),
+        pd.Timestamp("2024-01-10 09:00"),
+        pd.Timestamp("2024-01-12 17:00"),
+    ]
+    assert captured["2"][1] == ["Admitted", "Discharged"]
+    plt.close("all")

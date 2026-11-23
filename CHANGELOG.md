@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- Timestamps with UTC offsets are now converted to UTC instead of having the offset dropped, so events recorded in different offsets plot in true chronological order.
+- `--colors` / `color_scheme` now honour every key and accept partial schemes (unspecified keys use the defaults). Previously the CLI required all eight keys but used only `line` and `point_face`, and a partial dict through the API raised `KeyError`. Unknown keys and invalid colours are now reported as errors.
+- Wide mode with `--id-column`: an entity spread across several rows now shows the events from every row, not just the first.
+- `show_plot=True` now opens a window on every GUI backend, including matplotlib's current Qt backend name `qtagg`.
+- Promtest: Alert Checks rows keep a stable order between runs.
+- Promtest: with several test groups, a non-`.png` `output_file` (e.g. `.svg`) now writes one file per group instead of overwriting a single file.
+
 ## [0.4.3] - 2026-04-07
 
 #### Added
