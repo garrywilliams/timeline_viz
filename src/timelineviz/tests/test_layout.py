@@ -159,3 +159,62 @@ def test_compute_layout_single_event_has_nonzero_range():
     assert panel.x_lo < 100.0 < panel.x_hi
     (label,) = layout.labels
     assert label.side in (ABOVE, BELOW)
+
+
+# --- lanes -----------------------------------------------------------------
+
+
+def test_format_offset():
+    from timelineviz.layout import format_offset
+
+    assert format_offset(0) == "0s"
+    assert format_offset(45 / 86400) == "45s"
+    assert format_offset((2 * 60 + 5) / 86400) == "2m 5s"
+    assert format_offset(1.5 / 24) == "1h 30m"
+    assert format_offset(1 / 24) == "1h"
+    assert format_offset(3 + 21 / 24 + 5 / 1440) == "3d 21h"
+
+
+def test_lanes_stack_top_to_bottom_without_overlap():
+    dates = [0.0, 0.0005, 0.001, 0.0002, 0.0007]
+    lanes = ["A", "A", "A", "B", "B"]
+    layout = compute_layout(
+        dates,
+        ["long label text\nt"] * 5,
+        threshold_days=1,
+        measure=fixed_width,
+        lanes=lanes,
+        lane_order=["A", "B"],
+        gutter_in=1.0,
+    )
+    a, b = layout.lanes
+    assert (a.name, b.name) == ("A", "B")
+    assert a.baseline_pt > b.baseline_pt  # first lane on top
+    assert a.baseline_pt - a.below_pt == pytest.approx(b.baseline_pt + b.above_pt)
+    assert layout.total_height_pt == pytest.approx(a.height_pt + b.height_pt)
+    assert layout.panels[0].left_in == pytest.approx(MARGIN_X_IN + 1.0)
+    for p in layout.labels:
+        assert layout.lanes[p.lane].name == lanes[p.index]
+    for lane_no in (0, 1):
+        assert_packing_invariants([p for p in layout.labels if p.lane == lane_no], 1e-6)
+
+
+def test_lane_order_must_cover_all_lanes():
+    with pytest.raises(ValueError, match="missing lanes"):
+        compute_layout(
+            [0.0, 1.0],
+            ["a", "b"],
+            threshold_days=5,
+            measure=fixed_width,
+            lanes=["A", "B"],
+            lane_order=["A"],
+        )
+
+
+def test_unsorted_positions_keep_their_indices():
+    layout = compute_layout(
+        [5.0, 1.0, 3.0], ["c", "a", "b"], threshold_days=10, measure=fixed_width
+    )
+    assert sorted(p.index for p in layout.labels) == [0, 1, 2]
+    by_index = {p.index: p.x for p in layout.labels}
+    assert by_index == {0: 5.0, 1: 1.0, 2: 3.0}

@@ -19,12 +19,17 @@ from timelineviz.utils import clean_column_name, detect_timestamp_columns, parse
 DEFAULT_REMOVE_SUFFIXES = ("_utc", "_at", "_time", "_date")
 
 
+# Log levels ordered most to least severe; lanes with these names sort this way.
+LEVEL_ORDER = ("FATAL", "CRITICAL", "ERROR", "WARN", "WARNING", "INFO", "DEBUG", "TRACE")
+
+
 @dataclass(frozen=True)
 class Event:
-    """A single point in time with a label."""
+    """A single point in time with a label, optionally assigned to a lane."""
 
     time: pd.Timestamp
     label: str
+    lane: str | None = None
 
 
 @dataclass
@@ -52,6 +57,27 @@ class Timeline:
     @property
     def labels(self) -> list[str]:
         return [e.label for e in self.events]
+
+    @property
+    def lanes(self) -> list[str | None]:
+        return [e.lane for e in self.events]
+
+    def lane_order(self) -> list[str | None]:
+        """Distinct lanes in display order (see :func:`default_lane_order`)."""
+        return default_lane_order(self.lanes)
+
+
+def default_lane_order(lanes: Iterable[str | None]) -> list[str | None]:
+    """Order lanes for display, top to bottom.
+
+    If every lane is a recognised log level, lanes are ordered most severe
+    first (FATAL, ERROR, WARN, INFO, DEBUG, TRACE). Otherwise lanes keep the
+    order in which they first appear.
+    """
+    seen = list(dict.fromkeys(lanes))
+    if seen and all(isinstance(lane, str) and lane.upper() in LEVEL_ORDER for lane in seen):
+        return sorted(seen, key=lambda lane: LEVEL_ORDER.index(lane.upper()))
+    return seen
 
 
 def timeline_from_wide(
@@ -113,6 +139,7 @@ def timeline_from_event_log(
     filter_column: str | None = None,
     include_values: Sequence | None = None,
     exclude_values: Sequence | None = None,
+    lane_column: str | None = None,
     entity_id: str | None = None,
     title: str | None = None,
 ) -> Timeline:
@@ -121,6 +148,8 @@ def timeline_from_event_log(
     Rows are filtered on ``filter_column`` (``include_values`` /
     ``exclude_values``), rows with unparseable timestamps are dropped, and the
     rest become events labelled from ``label_column`` (or ``Event 1``, …).
+    With ``lane_column`` (e.g. ``level`` or ``service``) each event is put in
+    the lane named by that column, for :func:`~timelineviz.render_swimlanes`.
 
     Raises
     ------
@@ -133,6 +162,7 @@ def timeline_from_event_log(
         ("timestamp_column", timestamp_column),
         ("label_column", label_column),
         ("filter_column", filter_column),
+        ("lane_column", lane_column),
     ):
         if col is not None and col not in df.columns:
             raise ValueError(f"{name} {col!r} not found in columns")
@@ -159,5 +189,52 @@ def timeline_from_event_log(
     else:
         labels = [f"Event {i + 1}" for i in range(len(working))]
 
-    events = [Event(t, lab) for t, lab in zip(working["_event_ts"], labels)]
+    if lane_column is not None:
+        lanes = [None if pd.isna(v) else str(v) for v in working[lane_column]]
+    else:
+        lanes = [None] * len(working)
+
+    events = [Event(t, lab, lane) for t, lab, lane in zip(working["_event_ts"], labels, lanes)]
     return Timeline(events, title=title, entity_id=entity_id)
+
+
+def timeline_from_wide_entities(
+    data,
+    timestamp_columns: Sequence[str] | None = None,
+    id_column: str | None = None,
+    *,
+    max_entities: int | None = None,
+    label_mappings: Mapping[str, str] | None = None,
+    remove_suffixes: Iterable[str] | None = None,
+    title: str | None = None,
+) -> Timeline:
+    """Build one timeline with a lane per entity, from wide-format data.
+
+    Each entity (``id_column`` value, or row when ``id_column`` is None) becomes
+    a lane holding that entity's milestones, so several entities can be compared
+    side by side with :func:`~timelineviz.render_swimlanes` (typically with
+    ``align="start"`` so every lane starts at its own first event).
+    """
+    df = load_dataframe(data)
+    if id_column is not None and id_column not in df.columns:
+        raise ValueError(f"id_column {id_column!r} not found in columns")
+    if timestamp_columns is None:
+        timestamp_columns = detect_timestamp_columns(df)
+
+    if id_column is None:
+        groups = [(f"row_{i}", df.iloc[[i]]) for i in range(len(df))]
+    else:
+        groups = [(str(key), df[df[id_column] == key]) for key in df[id_column].dropna().unique()]
+    if max_entities:
+        groups = groups[:max_entities]
+
+    events = []
+    for lane, rows in groups:
+        single = timeline_from_wide(
+            rows,
+            timestamp_columns,
+            label_mappings=label_mappings,
+            remove_suffixes=remove_suffixes,
+        )
+        events.extend(Event(e.time, e.label, lane) for e in single.events)
+    return Timeline(events, title=title)
