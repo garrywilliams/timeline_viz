@@ -1,0 +1,17 @@
+# Backstage catalog entry. Read by GitHub discovery for the home-lab portal
+# (github.com/garrywilliams/backstage). Owner, domains and shared systems live there.
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: timeline-viz
+  title: timelineviz
+  description: "Timelines, swimlanes and Mermaid diagrams from CSVs, logs and Prometheus test files. Python library and CLI."
+  tags:
+    - python
+  annotations:
+    github.com/project-slug: garrywilliams/timeline_viz
+spec:
+  type: library
+  lifecycle: production
+  owner: "group:home-lab"
+  system: dev-tools
